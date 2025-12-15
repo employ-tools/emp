@@ -8,12 +8,27 @@
 body { font-family: sans-serif; margin: 16px; }
 #app { display: none; }
 
-table { border-collapse: collapse; width: 100%; margin-top: 10px; }
-th, td { border: 1px solid #ccc; padding: 8px; }
+table {
+  border-collapse: collapse;
+  width: 100%;
+  margin-top: 10px;
+}
+th, td {
+  border: 1px solid #ccc;
+  padding: 8px;
+}
 th { background: #f0f0f0; }
 
-.input-text { font-size: 16px; padding: 4px; width: 300px; margin-bottom: 6px; }
-.input-date { font-size: 16px; padding: 4px; }
+.input-text {
+  font-size: 16px;
+  padding: 4px;
+  width: 300px;
+  margin-bottom: 6px;
+}
+.input-date {
+  font-size: 16px;
+  padding: 4px;
+}
 
 .big-button {
   font-size: 18px;
@@ -41,13 +56,15 @@ th { background: #f0f0f0; }
 <!-- ログイン -->
 <div id="loginBox">
   <h2>ログイン</h2>
-  <p>管理者：パスワード / 学生：学籍番号のみ</p>
+  <p>管理者：ID＋パスワード / 学生：学籍番号のみ</p>
 
-  <input id="loginId" class="input-text" placeholder="学籍番号">
-  <input id="pwInput" type="password" class="input-text" placeholder="管理者パスワード（学生は空）">
+  <form onsubmit="tryLogin(); return false;">
+    <input id="loginId" class="input-text" placeholder="学籍番号 / 管理者ID">
+    <input id="pwInput" type="password" class="input-text" placeholder="管理者パスワード（学生は空）">
+    <br>
+    <button class="big-button" type="submit">ログイン</button>
+  </form>
 
-  <br>
-  <button class="big-button" onclick="tryLogin()">ログイン</button>
   <p id="loginErr" style="color:red;"></p>
 </div>
 
@@ -57,10 +74,17 @@ th { background: #f0f0f0; }
 <h1>就職状況管理</h1>
 
 <div>
-  <input id="searchBox" class="input-text" placeholder="生徒番号で検索">
+  <input id="searchBox" class="input-text" placeholder="学籍番号で検索">
   <button class="big-button" onclick="searchEmployment()">検索</button>
   <button class="big-button" onclick="clearAll()">クリア</button>
   <button class="big-button" onclick="openCompanyPage()">会社登録</button>
+</div>
+
+<!-- 学科フィルタ（管理者用） -->
+<div style="margin-top:6px;">
+  <button class="big-button" onclick="filterGroup(null)">全体</button>
+  <button class="big-button" onclick="filterGroup('DX2')">DX2</button>
+  <button class="big-button" onclick="filterGroup('JS2')">JS2</button>
 </div>
 
 <hr>
@@ -71,7 +95,7 @@ th { background: #f0f0f0; }
 <input id="student" class="input-text"><br>
 
 会社名<br>
-<input id="companyName" class="input-text" readonly onclick="openCompanyModal()"><br>
+<input id="companyName" class="input-text"><br>
 
 状況<br>
 <select id="statusSelect" class="input-text">
@@ -99,6 +123,7 @@ th { background: #f0f0f0; }
 <tr>
   <th>選択</th>
   <th>生徒</th>
+  <th>氏名</th>
   <th>会社名</th>
   <th>状況</th>
   <th>日付</th>
@@ -111,64 +136,53 @@ th { background: #f0f0f0; }
 
 <script>
 /* ===== 設定 ===== */
-const API_EMP = "https://69391958c8d59937aa067b4c.mockapi.io/employment/";
+const API_EMP = "https://69391958c8d59937aa067b4c.mockapi.io/employment";
 const STUDENT_JSON = "students.json";
-const ADMIN_HASH = "cfb075da768369ee05d64141329c41e908ea99cc88da9ee5f5d5e79ca5792d3e";
+const ADMIN_ID = "school2024";
+const ADMIN_PASS = "school2024";
 
 /* ===== 状態 ===== */
 let loginRole = "";
 let loginStudentId = "";
 let employment = [];
-let students = [];
+let studentsByGroup = {};
 let selectedId = null;
+let currentGroup = null;
 
-/* ===== util ===== */
-async function sha256(str) {
-  const buf = await crypto.subtle.digest("SHA-256", new TextEncoder().encode(str));
-  return [...new Uint8Array(buf)].map(x => x.toString(16).padStart(2, "0")).join("");
-}
-
-function getStudentName(id) {
-  const s = students.find(x => x.id === id);
-  return s ? s.name : "不明";
-}
-
-/* ===== 初期読み込み ===== */
+/* ===== students.json 読み込み ===== */
 fetch(STUDENT_JSON)
   .then(res => res.json())
-  .then(data => students = data);
+  .then(data => studentsByGroup = data);
 
 /* ===== ログイン ===== */
-async function tryLogin() {
+function tryLogin() {
   const id = loginId.value.trim();
-  const pw = pwInput.value;
+  const pw = pwInput.value.trim();
 
   if (!id) {
     loginErr.textContent = "入力してください";
     return;
   }
 
-  if (pw) {
-    if (await sha256(pw) !== ADMIN_HASH) {
-      loginErr.textContent = "パスワードが違います";
-      return;
-    }
+  if (id === ADMIN_ID && pw === ADMIN_PASS) {
     loginRole = "admin";
     student.disabled = false;
-  } else {
+  } else if (/^\d+$/.test(id)) {
     loginRole = "student";
     loginStudentId = id;
     student.value = id;
     student.disabled = true;
+  } else {
+    loginErr.textContent = "ログイン失敗";
+    return;
   }
 
   loginBox.style.display = "none";
   app.style.display = "block";
-
   loadEmployment();
 }
 
-/* ===== 一覧取得 ===== */
+/* ===== 就職データ取得 ===== */
 function loadEmployment() {
   fetch(API_EMP)
     .then(res => res.json())
@@ -180,22 +194,43 @@ function loadEmployment() {
     });
 }
 
+/* ===== 学生名取得（DX2 / JS2 対応） ===== */
+function getStudentName(id) {
+  for (const g in studentsByGroup) {
+    const s = studentsByGroup[g].find(x => x.id === id);
+    if (s) return s.name;
+  }
+  return "";
+}
+
 /* ===== 表示 ===== */
 function renderTable(list) {
   const tb = document.getElementById("employment-table");
   tb.innerHTML = "";
 
-  list.forEach(e => {
+  let showList = list;
+  if (currentGroup) {
+    const ids = (studentsByGroup[currentGroup] || []).map(s => s.id);
+    showList = list.filter(e => ids.includes(e.student));
+  }
+
+  showList.forEach(e => {
     const tr = document.createElement("tr");
     tr.innerHTML = `
       <td><input type="radio" name="sel" onclick="selectRow('${e.id}')"></td>
-      <td>${e.student}（${getStudentName(e.student)}）</td>
+      <td>${e.student}</td>
+      <td>${getStudentName(e.student)}</td>
       <td>${e.companyName}</td>
       <td>${e.status}</td>
       <td>${e.date || ""}</td>
     `;
     tb.appendChild(tr);
   });
+}
+
+function filterGroup(g) {
+  currentGroup = g;
+  renderTable(employment);
 }
 
 /* ===== 選択 ===== */
@@ -205,10 +240,10 @@ function selectRow(id) {
   student.value = e.student;
   companyName.value = e.companyName;
   statusSelect.value = e.status;
-  date.value = e.date;
+  date.value = e.date || "";
 }
 
-/* ===== 登録・編集 ===== */
+/* ===== CRUD ===== */
 function getForm() {
   return {
     student: (loginRole === "student") ? loginStudentId : student.value,
@@ -228,7 +263,7 @@ function addEmployment() {
 
 function updateEmployment() {
   if (!selectedId) return;
-  fetch(API_EMP + selectedId, {
+  fetch(`${API_EMP}/${selectedId}`, {
     method: "PUT",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify(getForm())
@@ -238,7 +273,7 @@ function updateEmployment() {
 function deleteEmployment() {
   if (!selectedId) return;
   if (!confirm("削除しますか？")) return;
-  fetch(API_EMP + selectedId, { method: "DELETE" })
+  fetch(`${API_EMP}/${selectedId}`, { method: "DELETE" })
     .then(loadEmployment);
 }
 
@@ -254,6 +289,7 @@ function clearAll() {
   companyName.value = "";
   statusSelect.value = "説明会";
   date.value = "";
+  currentGroup = null;
   renderTable(employment);
 }
 
