@@ -49,6 +49,13 @@ th { background: #f0f0f0; }
   border-radius: 10px;
   box-shadow: 0 6px 18px rgba(0,0,0,0.12);
 }
+
+.stat-box {
+  margin-top: 10px;
+  padding: 10px;
+  border: 1px solid #ccc;
+  background: #fafafa;
+}
 </style>
 </head>
 <body>
@@ -56,15 +63,12 @@ th { background: #f0f0f0; }
 <!-- ログイン -->
 <div id="loginBox">
   <h2>ログイン</h2>
-  <p>管理者：ID＋パスワード / 学生：学籍番号のみ</p>
-
   <form onsubmit="tryLogin(); return false;">
     <input id="loginId" class="input-text" placeholder="学籍番号 / 管理者ID">
-    <input id="pwInput" type="password" class="input-text" placeholder="管理者パスワード（学生は空）">
+    <input id="pwInput" type="password" class="input-text" placeholder="管理者パスワード">
     <br>
     <button class="big-button" type="submit">ログイン</button>
   </form>
-
   <p id="loginErr" style="color:red;"></p>
 </div>
 
@@ -78,14 +82,21 @@ th { background: #f0f0f0; }
   <button class="big-button" onclick="searchEmployment()">検索</button>
   <button class="big-button" onclick="clearAll()">クリア</button>
   <button class="big-button" onclick="openCompanyPage()">会社登録</button>
+  <button class="big-button" id="csvBtn" onclick="exportCSV()" style="display:none;">
+    CSVエクスポート
+  </button>
 </div>
 
-<!-- 学科フィルタ（管理者用） -->
-<div style="margin-top:6px;">
+<!-- 学科フィルタ -->
+<div style="margin-top:6px;" id="groupBtns">
   <button class="big-button" onclick="filterGroup(null)">全体</button>
   <button class="big-button" onclick="filterGroup('DX2')">DX2</button>
   <button class="big-button" onclick="filterGroup('JS2')">JS2</button>
+  <button class="big-button" onclick="filterGroup('TEST')">TEST</button>
 </div>
+
+<!-- 内定率 -->
+<div id="stats" class="stat-box" style="display:none;"></div>
 
 <hr>
 
@@ -114,7 +125,7 @@ th { background: #f0f0f0; }
 
 <button class="big-button" onclick="addEmployment()">追加</button>
 <button class="big-button" onclick="updateEmployment()">編集</button>
-<button class="big-button delete-button" onclick="deleteEmployment()">削除</button>
+<button class="big-button delete-button" id="deleteBtn" onclick="deleteEmployment()">削除</button>
 
 <hr>
 
@@ -135,13 +146,13 @@ th { background: #f0f0f0; }
 </div>
 
 <script>
-/* ===== 設定 ===== */
 const API_EMP = "https://69391958c8d59937aa067b4c.mockapi.io/employment";
 const STUDENT_JSON = "students.json";
-const ADMIN_ID = "school2024";
-const ADMIN_PASS = "school2024";
 
-/* ===== 状態 ===== */
+/* admin/admin の SHA-256 */
+const ADMIN_HASH =
+"8c6976e5b5410415bde908bd4dee15dfb167a9c873fc4bb8a81f6f2ab448a918";
+
 let loginRole = "";
 let loginStudentId = "";
 let employment = [];
@@ -149,29 +160,41 @@ let studentsByGroup = {};
 let selectedId = null;
 let currentGroup = null;
 
-/* ===== students.json 読み込み ===== */
-fetch(STUDENT_JSON)
-  .then(res => res.json())
-  .then(data => studentsByGroup = data);
+/* SHA-256 */
+async function sha256(str) {
+  const buf = await crypto.subtle.digest(
+    "SHA-256",
+    new TextEncoder().encode(str)
+  );
+  return [...new Uint8Array(buf)]
+    .map(b => b.toString(16).padStart(2, "0"))
+    .join("");
+}
 
-/* ===== ログイン ===== */
-function tryLogin() {
+/* students.json */
+fetch(STUDENT_JSON)
+  .then(r => r.json())
+  .then(d => studentsByGroup = d);
+
+/* ログイン */
+async function tryLogin() {
   const id = loginId.value.trim();
   const pw = pwInput.value.trim();
 
-  if (!id) {
-    loginErr.textContent = "入力してください";
-    return;
-  }
+  const h1 = await sha256(id);
+  const h2 = await sha256(pw);
 
-  if (id === ADMIN_ID && pw === ADMIN_PASS) {
+  if (h1 === ADMIN_HASH && h2 === ADMIN_HASH) {
     loginRole = "admin";
     student.disabled = false;
+    csvBtn.style.display = "inline-block";
+    stats.style.display = "block";
   } else if (/^\d+$/.test(id)) {
     loginRole = "student";
     loginStudentId = id;
     student.value = id;
     student.disabled = true;
+    deleteBtn.style.display = "none";   // ← 学生は削除不可
   } else {
     loginErr.textContent = "ログイン失敗";
     return;
@@ -182,19 +205,20 @@ function tryLogin() {
   loadEmployment();
 }
 
-/* ===== 就職データ取得 ===== */
+/* 就職データ */
 function loadEmployment() {
   fetch(API_EMP)
-    .then(res => res.json())
+    .then(r => r.json())
     .then(data => {
       employment = (loginRole === "student")
         ? data.filter(e => e.student === loginStudentId)
         : data;
       renderTable(employment);
+      if (loginRole === "admin") updateStats();
     });
 }
 
-/* ===== 学生名取得（DX2 / JS2 対応） ===== */
+/* 学生名 */
 function getStudentName(id) {
   for (const g in studentsByGroup) {
     const s = studentsByGroup[g].find(x => x.id === id);
@@ -203,18 +227,18 @@ function getStudentName(id) {
   return "";
 }
 
-/* ===== 表示 ===== */
+/* 表示 */
 function renderTable(list) {
   const tb = document.getElementById("employment-table");
   tb.innerHTML = "";
 
-  let showList = list;
+  let show = list;
   if (currentGroup) {
     const ids = (studentsByGroup[currentGroup] || []).map(s => s.id);
-    showList = list.filter(e => ids.includes(e.student));
+    show = list.filter(e => ids.includes(e.student));
   }
 
-  showList.forEach(e => {
+  show.forEach(e => {
     const tr = document.createElement("tr");
     tr.innerHTML = `
       <td><input type="radio" name="sel" onclick="selectRow('${e.id}')"></td>
@@ -228,12 +252,7 @@ function renderTable(list) {
   });
 }
 
-function filterGroup(g) {
-  currentGroup = g;
-  renderTable(employment);
-}
-
-/* ===== 選択 ===== */
+/* 選択 */
 function selectRow(id) {
   selectedId = id;
   const e = employment.find(x => x.id === id);
@@ -243,10 +262,10 @@ function selectRow(id) {
   date.value = e.date || "";
 }
 
-/* ===== CRUD ===== */
+/* CRUD */
 function getForm() {
   return {
-    student: (loginRole === "student") ? loginStudentId : student.value,
+    student: loginRole === "student" ? loginStudentId : student.value,
     companyName: companyName.value,
     status: statusSelect.value,
     date: date.value
@@ -271,13 +290,14 @@ function updateEmployment() {
 }
 
 function deleteEmployment() {
+  if (loginRole !== "admin") return;
   if (!selectedId) return;
   if (!confirm("削除しますか？")) return;
   fetch(`${API_EMP}/${selectedId}`, { method: "DELETE" })
     .then(loadEmployment);
 }
 
-/* ===== 検索・クリア ===== */
+/* 検索・クリア */
 function searchEmployment() {
   const k = searchBox.value.trim();
   if (!k) return renderTable(employment);
@@ -293,11 +313,52 @@ function clearAll() {
   renderTable(employment);
 }
 
-/* ===== 会社登録 ===== */
+/* 学科 */
+function filterGroup(g) {
+  currentGroup = g;
+  renderTable(employment);
+}
+
+/* CSV */
+function exportCSV() {
+  const rows = [["学籍番号","氏名","会社名","状況","日付"]];
+  employment.forEach(e => {
+    rows.push([
+      e.student,
+      getStudentName(e.student),
+      e.companyName,
+      e.status,
+      e.date || ""
+    ]);
+  });
+
+  const csv = rows.map(r => r.join(",")).join("\n");
+  const blob = new Blob([csv], { type: "text/csv" });
+  const a = document.createElement("a");
+  a.href = URL.createObjectURL(blob);
+  a.download = "employment.csv";
+  a.click();
+}
+
+/* 内定率 */
+function updateStats() {
+  let html = "";
+  for (const g in studentsByGroup) {
+    const ids = studentsByGroup[g].map(s => s.id);
+    const total = ids.length;
+    const naitei = employment.filter(e =>
+      ids.includes(e.student) &&
+      (e.status === "内定" || e.status === "内定承諾")
+    ).length;
+    const rate = total ? Math.round(naitei / total * 100) : 0;
+    html += `<b>${g}</b>：${naitei}/${total}（${rate}%）<br>`;
+  }
+  stats.innerHTML = html;
+}
+
 function openCompanyPage() {
   window.open("company.html", "_blank");
 }
 </script>
-
 </body>
 </html>
