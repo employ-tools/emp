@@ -11,13 +11,28 @@ body { font-family: sans-serif; margin: 16px; }
 table { border-collapse: collapse; width: 100%; margin-top: 10px; }
 th, td { border: 1px solid #ccc; padding: 8px; }
 th { background: #f0f0f0; }
+/* テーブル行がクリック可能であることを示すカーソル */
+#employment-table tr { cursor: pointer; } 
 
 .input-text { font-size: 16px; padding: 4px; width: 300px; margin-bottom: 6px; }
 .input-date { font-size: 16px; padding: 4px; }
 
-.big-button { font-size: 18px; padding: 10px 20px; margin-right: 10px; border-radius: 6px; border: none; cursor: pointer; background:#4CAF50; color:#fff; }
+/* ボタンの共通スタイルを調整 */
+.big-button { 
+  font-size: 18px; 
+  padding: 10px 20px; 
+  margin-right: 10px; 
+  border-radius: 6px; 
+  border: none; 
+  cursor: pointer; 
+  background:#4CAF50; 
+  color:#fff; 
+  margin-bottom: 5px; 
+}
 .delete-button { background:#e74c3c; }
 .manage-button { background: #3498db; }
+/* フィルターボタンの選択時のスタイル */
+.active-filter { background-color: #333 !important; }
 
 #loginBox { max-width: 420px; margin: 80px auto; padding: 24px; border-radius: 10px; box-shadow: 0 6px 18px rgba(0,0,0,0.12); }
 
@@ -51,38 +66,47 @@ th { background: #f0f0f0; }
 </div>
 
 <hr>
-<h3>登録 / 編集</h3>
+<div id="editSection" style="display:none;">
+    <h3>登録 / 編集</h3>
 
-生徒<br>
-<input id="student" class="input-text"><br>
+    生徒<br>
+    <input id="student" class="input-text"><br>
 
-会社名<br>
-<input id="companyName" class="input-text" readonly>
-<button class="big-button" onclick="openCompanyModal()">選択</button><br>
+    会社名<br>
+    <input id="companyName" class="input-text" readonly>
+    <button class="big-button" onclick="openCompanyModal()">選択</button><br>
 
-状況<br>
-<select id="statusSelect" class="input-text">
-  <option>説明会</option>
-  <option>書類選考応募</option>
-  <option>１次面接予定</option>
-  <option>２次面接予定</option>
-  <option>最終面接予定</option>
-  <option>内々定</option>
-  <option>内定</option>
-  <option>不採用</option>
-</select><br>
+    状況<br>
+    <select id="statusSelect" class="input-text">
+      <option>説明会</option>
+      <option>書類選考応募</option>
+      <option>１次面接予定</option>
+      <option>２次面接予定</option>
+      <option>最終面接予定</option>
+      <option>内々定</option>
+      <option>内定</option>
+      <option>不採用</option>
+    </select><br>
 
-日付<br>
-<input type="date" id="date" class="input-date"><br><br>
+    日付<br>
+    <input type="date" id="date" class="input-date"><br><br>
 
-<button class="big-button" onclick="addEmployment()">追加</button>
-<button class="big-button" onclick="updateEmployment()">編集</button>
-<button id="deleteButton" class="big-button delete-button" onclick="deleteEmployment()">削除</button>
+    <button class="big-button" onclick="addEmployment()">追加</button>
+    <button class="big-button" onclick="updateEmployment()">編集</button>
+    <button id="deleteButton" class="big-button delete-button" onclick="deleteEmployment()">削除</button>
+</div>
+<hr id="editSectionHr" style="display:none;">
+
+<button class="big-button" onclick="showAddForm()">新規追加</button>
 
 <hr>
+<div id="classFilterContainer" style="margin-bottom: 15px;">
+  </div>
+<hr>
+
 <table>
 <thead>
-<tr><th>学生</th><th>会社名</th><th>状況</th><th>日付</th></tr>
+<tr><th>学籍番号</th><th>名前</th><th>会社名</th><th>状況</th><th>日付</th></tr>
 </thead>
 <tbody id="employment-table"></tbody>
 </table>
@@ -107,13 +131,28 @@ let employment=[];
 let companies=[];
 let selectedId=null;
 
-let studentsList = []; // 全ての学生ID
-// ★ 修正: IDに対応する名前を保存するためのMap
+let studentsList = []; 
 let studentsMap = new Map();
-window.loginRole = null;
+let studentClassMap = new Map();
+let classKeys = [];
+let currentFilterClass = 'ALL'; 
+
+let statusColors = {};
+
+window.loginRole = null; 
 window.loginStudentId = null;
-// ★ 追加: ログインした学生の名前
 window.loginStudentName = null;
+
+async function loadStatusColors() {
+    try {
+        const response = await fetch('status_colors.json');
+        if (!response.ok) throw new Error('Failed to load status_colors.json: ' + response.statusText);
+        statusColors = await response.json();
+        console.log("Status colors loaded successfully.");
+    } catch (error) {
+        console.error("Error loading status colors data.", error);
+    }
+}
 
 async function loadStudents() {
   try {
@@ -123,12 +162,17 @@ async function loadStudents() {
     const studentData = await response.json();
 
     studentsList = [];
-    studentsMap = new Map(); // Mapを初期化
+    studentsMap = new Map();
+    studentClassMap = new Map(); 
+    classKeys = []; 
+
     for (const classKey in studentData) {
       if (Array.isArray(studentData[classKey])) {
+        classKeys.push(classKey); 
         for (const student of studentData[classKey]) {
             studentsList.push(student.id);
-            studentsMap.set(student.id, student.name); // IDと名前をマッピング
+            studentsMap.set(student.id, student.name); 
+            studentClassMap.set(student.id, classKey); 
         }
       }
     }
@@ -145,22 +189,47 @@ function updateUIVisibility() {
     const searchBox = document.getElementById("searchBox");
     const searchButton = document.getElementById("searchButton");
     const deleteButton = document.getElementById("deleteButton");
+    const classFilterContainer = document.getElementById("classFilterContainer"); 
+    const editSection = document.getElementById("editSection");
+    const editSectionHr = document.getElementById("editSectionHr");
 
     if (searchBox) searchBox.style.display = isStudent ? "none" : "";
     if (searchButton) searchButton.style.display = isStudent ? "none" : "";
     if (deleteButton) deleteButton.style.display = isStudent ? "none" : "";
     
-    // UI表示更新と同時に挨拶メッセージも更新
+    if (classFilterContainer) classFilterContainer.style.display = isStudent ? "none" : "";
+    
+    if (window.loginRole === "admin") {
+        editSection.style.display = 'none';
+        editSectionHr.style.display = 'none';
+    } else if (window.loginRole === "student") {
+        editSection.style.display = 'block';
+        editSectionHr.style.display = 'block';
+    }
+    
     displayWelcomeMessage();
 }
 
-// ★ 追加: 挨拶メッセージを表示・非表示にする関数
+function showAddForm() {
+    const editSection = document.getElementById("editSection");
+    const editSectionHr = document.getElementById("editSectionHr");
+    
+    document.getElementById("student").value = (window.loginRole === "student" ? window.loginStudentId : "");
+    document.getElementById("companyName").value = "";
+    document.getElementById("statusSelect").value = "説明会";
+    document.getElementById("date").value = "";
+    selectedId = null; 
+
+    editSection.style.display = 'block';
+    editSectionHr.style.display = 'block';
+}
+
 function displayWelcomeMessage() {
     const msgElement = document.getElementById("welcomeMessage");
     if (window.loginRole === "student" && window.loginStudentName) {
         msgElement.textContent = `こんにちは ${window.loginStudentName}さん`;
     } else {
-        msgElement.textContent = ""; // 管理者や未ログイン時は非表示
+        msgElement.textContent = ""; 
     }
 }
 
@@ -177,14 +246,13 @@ async function tryLogin(){
       }
   }
   
-  // 管理者ログイン
   if (pwInput === "admin" || pwInput === "管理者パスワード" || loginId.toLowerCase() === "admin") {
       loginErr.textContent = "";
       loginBox.style.display="none";
       app.style.display="block";
       window.loginRole = "admin";
       window.loginStudentId = loginId;
-      window.loginStudentName = null; // 管理者は名前を表示しない
+      window.loginStudentName = null; 
       
       updateUIVisibility();
       loadEmployment();
@@ -192,7 +260,6 @@ async function tryLogin(){
       return;
   }
 
-  // 学生ログイン認証
   if (studentsList.includes(loginId) && pwInput === "") {
       loginErr.textContent = "";
       loginBox.style.display="none";
@@ -200,7 +267,6 @@ async function tryLogin(){
       
       window.loginRole = "student";
       window.loginStudentId = loginId;
-      // ★ 名前を取得して設定
       window.loginStudentName = studentsMap.get(loginId);
       
       updateUIVisibility();
@@ -221,11 +287,23 @@ function loadEmployment() {
   fetch(API_EMP)
     .then(r => r.json())
     .then(data => {
+      const allData = data;
+      
       employment = (window.loginRole === "student")
-        ? data.filter(e => e.student === window.loginStudentId)
-        : data;
+        ? allData.filter(e => e.student === window.loginStudentId)
+        : allData; 
 
-      renderTable(employment);
+      if (window.loginRole === "admin") {
+          currentFilterClass = 'ALL'; 
+          renderClassFilters(); 
+          renderTable(employment);
+          document.getElementById("editSection").style.display = 'none';
+          document.getElementById("editSectionHr").style.display = 'none';
+
+      } else {
+          renderTable(employment);
+      }
+
       if (window.loginRole === "student") {
           document.getElementById("student").value = window.loginStudentId;
           document.getElementById("student").readOnly = true;
@@ -235,17 +313,26 @@ function loadEmployment() {
     });
 }
 
-function loadCompanies(){
-  fetch(API_COMPANY).then(r=>r.json()).then(d=>{ companies=d; renderCompanyList(d); });
-}
-
+// ★ 修正: renderTable関数に名前表示を追加
 function renderTable(list){
   const tb=document.getElementById("employment-table");
   tb.innerHTML="";
   list.forEach(e=>{
     const tr=document.createElement("tr");
     tr.onclick=()=>selectRow(e.id);
-    tr.innerHTML=`<td>${e.student}</td><td>${e.companyName}</td><td>${e.status}</td><td>${e.date||""}</td>`;
+    
+    // 学生の名前を取得
+    const studentName = studentsMap.get(e.student) || "不明"; 
+    
+    // 学籍番号と名前のセルを追加
+    tr.innerHTML=`<td>${e.student}</td><td>${studentName}</td><td>${e.companyName}</td><td>${e.status}</td><td>${e.date||""}</td>`;
+
+    const colorInfo = statusColors[e.status];
+    if (colorInfo) {
+        tr.style.backgroundColor = colorInfo.background;
+        tr.style.color = colorInfo.text;
+    }
+
     tb.appendChild(tr);
   });
 }
@@ -253,10 +340,68 @@ function renderTable(list){
 function selectRow(id){
   selectedId=id;
   const e=employment.find(x=>x.id===id);
-  student.value=e.student;
-  companyName.value=e.companyName;
-  statusSelect.value=e.status;
-  date.value=e.date||"";
+  
+  document.getElementById("student").value=e.student;
+  document.getElementById("companyName").value=e.companyName;
+  document.getElementById("statusSelect").value=e.status;
+  document.getElementById("date").value=e.date||"";
+
+  if (window.loginRole === "admin" || window.loginRole === "student") {
+      document.getElementById("editSection").style.display = 'block';
+      document.getElementById("editSectionHr").style.display = 'block';
+  }
+}
+
+
+function renderClassFilters() {
+    const container = document.getElementById("classFilterContainer");
+    if (!container || window.loginRole !== "admin") return;
+    
+    container.innerHTML = "";
+    
+    const allButton = document.createElement("button");
+    allButton.textContent = "ALL";
+    allButton.className = "big-button";
+    if (currentFilterClass === 'ALL') {
+        allButton.classList.add('active-filter');
+    }
+    allButton.onclick = () => filterByClass('ALL');
+    container.appendChild(allButton);
+
+    classKeys.forEach(key => {
+        const button = document.createElement("button");
+        button.textContent = key;
+        button.className = "big-button";
+        if (currentFilterClass === key) {
+             button.classList.add('active-filter');
+        }
+        button.onclick = () => filterByClass(key);
+        container.appendChild(button);
+    });
+}
+
+function filterByClass(classKey) {
+    if (window.loginRole !== "admin") return;
+
+    currentFilterClass = classKey;
+    renderClassFilters(); 
+
+    let filteredEmployment = employment;
+
+    if (classKey !== 'ALL') {
+        const studentIdsInClass = Array.from(studentClassMap.entries())
+            .filter(([id, cls]) => cls === classKey)
+            .map(([id, cls]) => id);
+
+        filteredEmployment = employment.filter(e => studentIdsInClass.includes(e.student));
+    }
+
+    renderTable(filteredEmployment);
+}
+
+
+function loadCompanies(){
+  fetch(API_COMPANY).then(r=>r.json()).then(d=>{ companies=d; renderCompanyList(d); });
 }
 
 function addEmployment(){
@@ -289,15 +434,30 @@ function deleteEmployment(){
 function searchEmployment(){
   const k=searchBox.value.trim();
   if(!k)return renderTable(employment);
-  const currentEmployment = (window.loginRole === "student") 
-      ? employment.filter(e => e.student === window.loginStudentId)
-      : employment;
+  
+  let dataToSearch;
+  if (window.loginRole === "admin" && currentFilterClass !== 'ALL') {
+      const studentIdsInClass = Array.from(studentClassMap.entries())
+            .filter(([id, cls]) => cls === currentFilterClass)
+            .map(([id, cls]) => id);
+      dataToSearch = employment.filter(e => studentIdsInClass.includes(e.student));
+  } else {
+      dataToSearch = (window.loginRole === "student") 
+          ? employment.filter(e => e.student === window.loginStudentId)
+          : employment;
+  }
 
-  renderTable(currentEmployment.filter(e=>e.student.includes(k)));
+  // 検索は学籍番号に対して行われますが、表示は名前付きのテーブルを使用します
+  renderTable(dataToSearch.filter(e=>e.student.includes(k)));
 }
 
 function clearAll(){
-  searchBox.value=""; companyName.value=""; date.value=""; renderTable(employment);
+  searchBox.value=""; companyName.value=""; date.value=""; 
+  if (window.loginRole === "admin") {
+      filterByClass('ALL');
+  } else {
+      renderTable(employment);
+  }
 }
 
 function openCompanyModal(){
@@ -323,6 +483,7 @@ function renderCompanyList(list){
 }
 
 loadStudents();
+loadStatusColors();
 </script>
 </body>
 </html>
