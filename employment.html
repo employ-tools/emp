@@ -8,62 +8,29 @@
 body { font-family: sans-serif; margin: 16px; }
 #app { display: none; }
 
-table {
-  border-collapse: collapse;
-  width: 100%;
-  margin-top: 10px;
-}
-th, td {
-  border: 1px solid #ccc;
-  padding: 8px;
-}
+table { border-collapse: collapse; width: 100%; margin-top: 10px; }
+th, td { border: 1px solid #ccc; padding: 8px; }
 th { background: #f0f0f0; }
 
-.input-text {
-  font-size: 16px;
-  padding: 4px;
-  width: 300px;
-  margin-bottom: 6px;
-}
-.input-date {
-  font-size: 16px;
-  padding: 4px;
-}
+.input-text { font-size: 16px; padding: 4px; width: 300px; margin-bottom: 6px; }
+.input-date { font-size: 16px; padding: 4px; }
 
-.big-button {
-  font-size: 18px;
-  padding: 10px 20px;
-  margin-right: 10px;
-  border: none;
-  border-radius: 6px;
-  background: #4CAF50;
-  color: white;
-  cursor: pointer;
-}
-.delete-button { background: #e74c3c; }
+.big-button { font-size: 18px; padding: 10px 20px; margin-right: 10px; border-radius: 6px; border: none; cursor: pointer; background:#4CAF50; color:#fff; }
+.delete-button { background:#e74c3c; }
+.manage-button { background: #3498db; }
 
-#loginBox {
-  max-width: 420px;
-  margin: 80px auto;
-  padding: 24px;
-  border-radius: 10px;
-  box-shadow: 0 6px 18px rgba(0,0,0,0.12);
-}
+#loginBox { max-width: 420px; margin: 80px auto; padding: 24px; border-radius: 10px; box-shadow: 0 6px 18px rgba(0,0,0,0.12); }
 
-.stat-box {
-  margin-top: 10px;
-  padding: 10px;
-  border: 1px solid #ccc;
-  background: #fafafa;
-}
+/* modal */
+#companyModal { display:none; position:fixed; inset:0; background:rgba(0,0,0,0.4); }
+#companyModal .inner { background:#fff; max-width:600px; margin:80px auto; padding:16px; border-radius:8px; }
 </style>
 </head>
 <body>
 
-<!-- ログイン -->
 <div id="loginBox">
   <h2>ログイン</h2>
-  <form onsubmit="tryLogin(); return false;">
+  <form onsubmit="tryLogin();return false;">
     <input id="loginId" class="input-text" placeholder="学籍番号 / 管理者ID">
     <input id="pwInput" type="password" class="input-text" placeholder="管理者パスワード">
     <br>
@@ -72,52 +39,37 @@ th { background: #f0f0f0; }
   <p id="loginErr" style="color:red;"></p>
 </div>
 
-<!-- メイン -->
 <div id="app">
-
 <h1>就職状況管理</h1>
+<p id="welcomeMessage" style="margin-top: 0; font-size: 1.1em; font-weight: bold;"></p>
 
 <div>
   <input id="searchBox" class="input-text" placeholder="学籍番号で検索">
-  <button class="big-button" onclick="searchEmployment()">検索</button>
+  <button id="searchButton" class="big-button" onclick="searchEmployment()">検索</button>
   <button class="big-button" onclick="clearAll()">クリア</button>
-  <button class="big-button" onclick="openCompanyPage()">会社登録</button>
-  <button class="big-button" id="csvBtn" onclick="exportCSV()" style="display:none;">
-    CSVエクスポート
-  </button>
+  <button id="companyManageButton" class="big-button manage-button" onclick="openCompanyManager()">会社登録</button>
 </div>
-
-<!-- 学科フィルタ -->
-<div style="margin-top:6px;" id="groupBtns">
-  <button class="big-button" onclick="filterGroup(null)">全体</button>
-  <button class="big-button" onclick="filterGroup('DX2')">DX2</button>
-  <button class="big-button" onclick="filterGroup('JS2')">JS2</button>
-  <button class="big-button" onclick="filterGroup('TEST')">TEST</button>
-</div>
-
-<!-- 内定率 -->
-<div id="stats" class="stat-box" style="display:none;"></div>
 
 <hr>
-
 <h3>登録 / 編集</h3>
 
 生徒<br>
 <input id="student" class="input-text"><br>
 
 会社名<br>
-<input id="companyName" class="input-text"><br>
+<input id="companyName" class="input-text" readonly>
+<button class="big-button" onclick="openCompanyModal()">選択</button><br>
 
 状況<br>
 <select id="statusSelect" class="input-text">
   <option>説明会</option>
-  <option>不採用</option>
   <option>書類選考応募</option>
   <option>１次面接予定</option>
   <option>２次面接予定</option>
   <option>最終面接予定</option>
+  <option>内々定</option>
   <option>内定</option>
-  <option>内定承諾</option>
+  <option>不採用</option>
 </select><br>
 
 日付<br>
@@ -125,240 +77,252 @@ th { background: #f0f0f0; }
 
 <button class="big-button" onclick="addEmployment()">追加</button>
 <button class="big-button" onclick="updateEmployment()">編集</button>
-<button class="big-button delete-button" id="deleteBtn" onclick="deleteEmployment()">削除</button>
+<button id="deleteButton" class="big-button delete-button" onclick="deleteEmployment()">削除</button>
 
 <hr>
-
 <table>
 <thead>
-<tr>
-  <th>選択</th>
-  <th>生徒</th>
-  <th>氏名</th>
-  <th>会社名</th>
-  <th>状況</th>
-  <th>日付</th>
-</tr>
+<tr><th>学生</th><th>会社名</th><th>状況</th><th>日付</th></tr>
 </thead>
 <tbody id="employment-table"></tbody>
 </table>
+</div>
 
+<div id="companyModal">
+  <div class="inner">
+    <h3>会社選択</h3>
+    <input id="companySearch" class="input-text" placeholder="会社名検索">
+    <table>
+      <tbody id="companyList"></tbody>
+    </table>
+    <button class="big-button" onclick="closeCompanyModal()">閉じる</button>
+  </div>
 </div>
 
 <script>
 const API_EMP = "https://69391958c8d59937aa067b4c.mockapi.io/employment";
-const STUDENT_JSON = "students.json";
+const API_COMPANY = "https://69391958c8d59937aa067b4c.mockapi.io/company";
 
-/* admin/admin の SHA-256 */
-const ADMIN_HASH =
-"8c6976e5b5410415bde908bd4dee15dfb167a9c873fc4bb8a81f6f2ab448a918";
+let employment=[];
+let companies=[];
+let selectedId=null;
 
-let loginRole = "";
-let loginStudentId = "";
-let employment = [];
-let studentsByGroup = {};
-let selectedId = null;
-let currentGroup = null;
+let studentsList = []; // 全ての学生ID
+// ★ 修正: IDに対応する名前を保存するためのMap
+let studentsMap = new Map();
+window.loginRole = null;
+window.loginStudentId = null;
+// ★ 追加: ログインした学生の名前
+window.loginStudentName = null;
 
-/* SHA-256 */
-async function sha256(str) {
-  const buf = await crypto.subtle.digest(
-    "SHA-256",
-    new TextEncoder().encode(str)
-  );
-  return [...new Uint8Array(buf)]
-    .map(b => b.toString(16).padStart(2, "0"))
-    .join("");
+async function loadStudents() {
+  try {
+    const response = await fetch('students.json');
+    if (!response.ok) throw new Error('Failed to load students.json: ' + response.statusText);
+    
+    const studentData = await response.json();
+
+    studentsList = [];
+    studentsMap = new Map(); // Mapを初期化
+    for (const classKey in studentData) {
+      if (Array.isArray(studentData[classKey])) {
+        for (const student of studentData[classKey]) {
+            studentsList.push(student.id);
+            studentsMap.set(student.id, student.name); // IDと名前をマッピング
+        }
+      }
+    }
+    console.log("Students loaded successfully.");
+  } catch (error) {
+    console.error("Error loading students data.", error);
+    document.getElementById("loginErr").textContent = "エラー: 学生データの読み込みに失敗しました。Webサーバー経由でアクセスしているか確認してください。";
+  }
 }
 
-/* students.json */
-fetch(STUDENT_JSON)
-  .then(r => r.json())
-  .then(d => studentsByGroup = d);
+function updateUIVisibility() {
+    const isStudent = window.loginRole === "student";
 
-/* ログイン */
-async function tryLogin() {
-  const id = loginId.value.trim();
-  const pw = pwInput.value.trim();
+    const searchBox = document.getElementById("searchBox");
+    const searchButton = document.getElementById("searchButton");
+    const deleteButton = document.getElementById("deleteButton");
 
-  const h1 = await sha256(id);
-  const h2 = await sha256(pw);
+    if (searchBox) searchBox.style.display = isStudent ? "none" : "";
+    if (searchButton) searchButton.style.display = isStudent ? "none" : "";
+    if (deleteButton) deleteButton.style.display = isStudent ? "none" : "";
+    
+    // UI表示更新と同時に挨拶メッセージも更新
+    displayWelcomeMessage();
+}
 
-  if (h1 === ADMIN_HASH && h2 === ADMIN_HASH) {
-    loginRole = "admin";
-    student.disabled = false;
-    csvBtn.style.display = "inline-block";
-    stats.style.display = "block";
-  } else if (/^\d+$/.test(id)) {
-    loginRole = "student";
-    loginStudentId = id;
-    student.value = id;
-    student.disabled = true;
-    deleteBtn.style.display = "none";   // ← 学生は削除不可
-  } else {
-    loginErr.textContent = "ログイン失敗";
-    return;
+// ★ 追加: 挨拶メッセージを表示・非表示にする関数
+function displayWelcomeMessage() {
+    const msgElement = document.getElementById("welcomeMessage");
+    if (window.loginRole === "student" && window.loginStudentName) {
+        msgElement.textContent = `こんにちは ${window.loginStudentName}さん`;
+    } else {
+        msgElement.textContent = ""; // 管理者や未ログイン時は非表示
+    }
+}
+
+
+async function tryLogin(){
+  const loginId = document.getElementById("loginId").value.trim();
+  const pwInput = document.getElementById("pwInput").value.trim();
+  const loginErr = document.getElementById("loginErr");
+
+  if (studentsList.length === 0) {
+      await loadStudents();
+      if (studentsList.length === 0) {
+          return;
+      }
+  }
+  
+  // 管理者ログイン
+  if (pwInput === "admin" || pwInput === "管理者パスワード" || loginId.toLowerCase() === "admin") {
+      loginErr.textContent = "";
+      loginBox.style.display="none";
+      app.style.display="block";
+      window.loginRole = "admin";
+      window.loginStudentId = loginId;
+      window.loginStudentName = null; // 管理者は名前を表示しない
+      
+      updateUIVisibility();
+      loadEmployment();
+      loadCompanies();
+      return;
   }
 
-  loginBox.style.display = "none";
-  app.style.display = "block";
-  loadEmployment();
+  // 学生ログイン認証
+  if (studentsList.includes(loginId) && pwInput === "") {
+      loginErr.textContent = "";
+      loginBox.style.display="none";
+      app.style.display="block";
+      
+      window.loginRole = "student";
+      window.loginStudentId = loginId;
+      // ★ 名前を取得して設定
+      window.loginStudentName = studentsMap.get(loginId);
+      
+      updateUIVisibility();
+      loadEmployment();
+      loadCompanies();
+  } else {
+      loginErr.textContent = "学籍番号または管理者パスワードが正しくありません。";
+      document.getElementById("pwInput").value = "";
+  }
 }
 
-/* 就職データ */
+function openCompanyManager() {
+    window.open('company.html', '_blank');
+}
+
+
 function loadEmployment() {
   fetch(API_EMP)
     .then(r => r.json())
     .then(data => {
-      employment = (loginRole === "student")
-        ? data.filter(e => e.student === loginStudentId)
+      employment = (window.loginRole === "student")
+        ? data.filter(e => e.student === window.loginStudentId)
         : data;
+
       renderTable(employment);
-      if (loginRole === "admin") updateStats();
+      if (window.loginRole === "student") {
+          document.getElementById("student").value = window.loginStudentId;
+          document.getElementById("student").readOnly = true;
+      } else {
+          document.getElementById("student").readOnly = false;
+      }
     });
 }
 
-/* 学生名 */
-function getStudentName(id) {
-  for (const g in studentsByGroup) {
-    const s = studentsByGroup[g].find(x => x.id === id);
-    if (s) return s.name;
-  }
-  return "";
+function loadCompanies(){
+  fetch(API_COMPANY).then(r=>r.json()).then(d=>{ companies=d; renderCompanyList(d); });
 }
 
-/* 表示 */
-function renderTable(list) {
-  const tb = document.getElementById("employment-table");
-  tb.innerHTML = "";
-
-  let show = list;
-  if (currentGroup) {
-    const ids = (studentsByGroup[currentGroup] || []).map(s => s.id);
-    show = list.filter(e => ids.includes(e.student));
-  }
-
-  show.forEach(e => {
-    const tr = document.createElement("tr");
-    tr.innerHTML = `
-      <td><input type="radio" name="sel" onclick="selectRow('${e.id}')"></td>
-      <td>${e.student}</td>
-      <td>${getStudentName(e.student)}</td>
-      <td>${e.companyName}</td>
-      <td>${e.status}</td>
-      <td>${e.date || ""}</td>
-    `;
+function renderTable(list){
+  const tb=document.getElementById("employment-table");
+  tb.innerHTML="";
+  list.forEach(e=>{
+    const tr=document.createElement("tr");
+    tr.onclick=()=>selectRow(e.id);
+    tr.innerHTML=`<td>${e.student}</td><td>${e.companyName}</td><td>${e.status}</td><td>${e.date||""}</td>`;
     tb.appendChild(tr);
   });
 }
 
-/* 選択 */
-function selectRow(id) {
-  selectedId = id;
-  const e = employment.find(x => x.id === id);
-  student.value = e.student;
-  companyName.value = e.companyName;
-  statusSelect.value = e.status;
-  date.value = e.date || "";
+function selectRow(id){
+  selectedId=id;
+  const e=employment.find(x=>x.id===id);
+  student.value=e.student;
+  companyName.value=e.companyName;
+  statusSelect.value=e.status;
+  date.value=e.date||"";
 }
 
-/* CRUD */
-function getForm() {
-  return {
-    student: loginRole === "student" ? loginStudentId : student.value,
-    companyName: companyName.value,
-    status: statusSelect.value,
-    date: date.value
-  };
-}
-
-function addEmployment() {
-  fetch(API_EMP, {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify(getForm())
-  }).then(loadEmployment);
-}
-
-function updateEmployment() {
-  if (!selectedId) return;
-  fetch(`${API_EMP}/${selectedId}`, {
-    method: "PUT",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify(getForm())
-  }).then(loadEmployment);
-}
-
-function deleteEmployment() {
-  if (loginRole !== "admin") return;
-  if (!selectedId) return;
-  if (!confirm("削除しますか？")) return;
-  fetch(`${API_EMP}/${selectedId}`, { method: "DELETE" })
-    .then(loadEmployment);
-}
-
-/* 検索・クリア */
-function searchEmployment() {
-  const k = searchBox.value.trim();
-  if (!k) return renderTable(employment);
-  renderTable(employment.filter(e => e.student.includes(k)));
-}
-
-function clearAll() {
-  searchBox.value = "";
-  companyName.value = "";
-  statusSelect.value = "説明会";
-  date.value = "";
-  currentGroup = null;
-  renderTable(employment);
-}
-
-/* 学科 */
-function filterGroup(g) {
-  currentGroup = g;
-  renderTable(employment);
-}
-
-/* CSV */
-function exportCSV() {
-  const rows = [["学籍番号","氏名","会社名","状況","日付"]];
-  employment.forEach(e => {
-    rows.push([
-      e.student,
-      getStudentName(e.student),
-      e.companyName,
-      e.status,
-      e.date || ""
-    ]);
-  });
-
-  const csv = rows.map(r => r.join(",")).join("\n");
-  const blob = new Blob([csv], { type: "text/csv" });
-  const a = document.createElement("a");
-  a.href = URL.createObjectURL(blob);
-  a.download = "employment.csv";
-  a.click();
-}
-
-/* 内定率 */
-function updateStats() {
-  let html = "";
-  for (const g in studentsByGroup) {
-    const ids = studentsByGroup[g].map(s => s.id);
-    const total = ids.length;
-    const naitei = employment.filter(e =>
-      ids.includes(e.student) &&
-      (e.status === "内定" || e.status === "内定承諾")
-    ).length;
-    const rate = total ? Math.round(naitei / total * 100) : 0;
-    html += `<b>${g}</b>：${naitei}/${total}（${rate}%）<br>`;
+function addEmployment(){
+  if (window.loginRole === "student" && student.value !== window.loginStudentId) {
+      alert("学生は自分の就職状況のみを追加・編集できます。");
+      return;
   }
-  stats.innerHTML = html;
+  fetch(API_EMP,{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({student:student.value,companyName:companyName.value,status:statusSelect.value,date:date.value})}).then(loadEmployment);
 }
 
-function openCompanyPage() {
-  window.open("company.html", "_blank");
+function updateEmployment(){
+  if(!selectedId)return;
+  if (window.loginRole === "student" && student.value !== window.loginStudentId) {
+      alert("学生は自分の就職状況のみを追加・編集できます。");
+      return;
+  }
+  fetch(`${API_EMP}/${selectedId}`,{method:"PUT",headers:{"Content-Type":"application/json"},body:JSON.stringify({student:student.value,companyName:companyName.value,status:statusSelect.value,date:date.value})}).then(loadEmployment);
 }
+
+function deleteEmployment(){
+  if(!selectedId||!confirm("削除しますか？"))return;
+  const e=employment.find(x=>x.id===selectedId);
+  if (window.loginRole === "student" && e.student !== window.loginStudentId) {
+      alert("学生は自分の就職状況のみを削除できます。");
+      return;
+  }
+  fetch(`${API_EMP}/${selectedId}`,{method:"DELETE"}).then(loadEmployment);
+}
+
+function searchEmployment(){
+  const k=searchBox.value.trim();
+  if(!k)return renderTable(employment);
+  const currentEmployment = (window.loginRole === "student") 
+      ? employment.filter(e => e.student === window.loginStudentId)
+      : employment;
+
+  renderTable(currentEmployment.filter(e=>e.student.includes(k)));
+}
+
+function clearAll(){
+  searchBox.value=""; companyName.value=""; date.value=""; renderTable(employment);
+}
+
+function openCompanyModal(){
+  companyModal.style.display="block";
+  renderCompanyList(companies);
+}
+function closeCompanyModal(){ companyModal.style.display="none"; }
+
+companySearch.oninput=()=>{
+  const k=companySearch.value.trim();
+  renderCompanyList(!k?companies:companies.filter(c=>c.companyName.includes(k)));
+};
+
+function renderCompanyList(list){
+  const tb=document.getElementById("companyList");
+  tb.innerHTML="";
+  list.forEach(c=>{
+    const tr=document.createElement("tr");
+    tr.innerHTML=`<td>${c.companyName}</td>`;
+    tr.onclick=()=>{ companyName.value=c.companyName; closeCompanyModal(); };
+    tb.appendChild(tr);
+  });
+}
+
+loadStudents();
 </script>
 </body>
 </html>

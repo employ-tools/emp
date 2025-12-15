@@ -1,0 +1,18 @@
+{
+  "内定": {
+    "background": "#b7e1a1",
+    "text": "#000000"
+  },
+  "内々定": {
+    "background": "#6cc070",
+    "text": "#000000"
+  },
+  "不採用": {
+    "background": "#555555",
+    "text": "#ffffff"
+  },
+  "選考中": {
+    "background": "#ffffff",
+    "text": "#000000"
+  }
+}
