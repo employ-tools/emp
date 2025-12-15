@@ -1,0 +1,309 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+  <meta charset="UTF-8">
+  <title>Company 管理 (MockAPI)</title>
+  <style>
+    table {
+      border-collapse: collapse;
+      width: 100%;
+      margin-top: 10px;
+    }
+    th, td {
+      border: 1px solid #ccc;
+      padding: 8px;
+    }
+    th {
+      background-color: #f0f0f0;
+      cursor: pointer;
+    }
+    tr:hover {
+      background-color: #fafafa;
+    }
+
+    /* 列幅調整 */
+    th:nth-child(2), td:nth-child(2) { width: 20%; } /* 会社名 */
+    th:nth-child(3), td:nth-child(3) { width: 20%; } /* ふりがな */
+    th:nth-child(4), td:nth-child(4) { width: 20%; } /* URL */
+    th:nth-child(5), td:nth-child(5) { width: 40%; } /* 備考 */
+
+    /* 入力欄スタイル */
+    .input-text {
+      font-size: 16px;
+      padding: 4px;
+      width: 350px;
+      margin-bottom: 6px;
+    }
+    .input-area {
+      font-size: 16px;
+      padding: 6px;
+      width: 350px;
+      height: 70px;
+      margin-bottom: 6px;
+    }
+
+    /* ボタン大型化 */
+    .big-button {
+      font-size: 18px;
+      padding: 10px 20px;
+      margin-right: 10px;
+      width: 120px;
+      border: none;
+      background-color: #4CAF50;
+      color: white;
+      border-radius: 6px;
+      cursor: pointer;
+      box-shadow: 0 3px 6px rgba(0,0,0,0.2);
+    }
+    .big-button:hover { background-color: #45a049; }
+
+    .delete-button { background-color: #e74c3c; }
+    .delete-button:hover { background-color: #c0392b; }
+
+    /* モーダル */
+    #modalOverlay {
+      display: none;
+      position: fixed;
+      top: 0;
+      left: 0;
+      width: 100%;
+      height: 100%;
+      background: rgba(0,0,0,0.5);
+      justify-content: center;
+      align-items: center;
+      z-index: 1000;
+    }
+    #modalWindow {
+      background: white;
+      padding: 20px;
+      width: 400px;
+      border-radius: 8px;
+      box-shadow: 0 4px 10px rgba(0,0,0,0.3);
+    }
+    #modalClose {
+      float: right;
+      cursor: pointer;
+      font-size: 20px;
+    }
+  </style>
+</head>
+<body>
+
+<h1>Company 管理</h1>
+
+<input id="searchBox" placeholder="会社名で検索">
+<button onclick="searchCompanies()">検索</button>
+
+<hr>
+
+<h2>登録 / 編集</h2>
+
+会社名:<br>
+<input id="companyName" class="input-text"><br>
+
+ふりがな:<br>
+<input id="furigana" class="input-text"><br>
+
+URL:<br>
+<input id="url" class="input-text"><br>
+
+備考 etc:<br>
+<input id="etc" class="input-text"><br>
+
+備考2 etc2:<br>
+<textarea id="etc2" class="input-area"></textarea><br><br>
+
+<button class="big-button" onclick="addCompany()">追加</button>
+<button class="big-button" onclick="updateCompany()">編集</button>
+<button class="big-button delete-button" onclick="deleteSelected()">削除</button>
+
+<hr>
+
+<table>
+  <thead>
+    <tr>
+      <th>選択</th>
+      <th onclick="sortBy('companyName')">会社名</th>
+      <th onclick="sortBy('furigana')">ふりがな</th>
+      <th>URL</th>
+      <th>備考</th>
+    </tr>
+  </thead>
+  <tbody id="company-table"></tbody>
+</table>
+
+<!-- モーダル -->
+<div id="modalOverlay" onclick="closeModal()">
+  <div id="modalWindow" onclick="event.stopPropagation()">
+    <span id="modalClose" onclick="closeModal()">×</span>
+    <h2 id="modalTitle"></h2>
+
+    <p><strong>ふりがな:</strong><br><span id="modalFurigana"></span></p>
+    <p><strong>URL:</strong><br><span id="modalUrl"></span></p>
+    <p><strong>備考 etc:</strong><br><span id="modalEtc"></span></p>
+    <p><strong>備考2 etc2:</strong><br><span id="modalEtc2"></span></p>
+  </div>
+</div>
+
+<script>
+const API_URL = "https://69391958c8d59937aa067b4c.mockapi.io/company/";
+let companies = [];
+let selectedId = null;
+
+/* ソート状態保持 */
+let sortKey = "companyName";
+let sortAsc = true;
+
+/* --- 一覧取得 --- */
+function loadCompanies() {
+  fetch(API_URL)
+    .then(r => r.json())
+    .then(data => {
+      companies = data;
+      renderTable(companies);
+    });
+}
+
+/* --- テーブル描画 --- */
+function renderTable(list) {
+  const tbody = document.getElementById("company-table");
+  tbody.innerHTML = "";
+
+  list.sort((a, b) => {
+    const A = a[sortKey] || "";
+    const B = b[sortKey] || "";
+    return sortAsc ? A.localeCompare(B) : B.localeCompare(A);
+  });
+
+  list.forEach(c => {
+    const tr = document.createElement("tr");
+
+    tr.innerHTML = `
+      <td><input type="radio" name="select" onclick="selectCompany('${c.id}')"></td>
+
+      <td style="color:blue; text-decoration:underline; cursor:pointer;"
+          onclick="openModal('${c.id}')">${c.companyName}</td>
+
+      <td>${c.furigana || ""}</td>
+
+      <td>
+        <a href="${c.url}" target="_blank" style="color:#0066cc;">
+          ${c.url}
+        </a>
+      </td>
+
+      <td>${c.etc}</td>
+    `;
+
+    tbody.appendChild(tr);
+  });
+}
+
+/* --- ラジオ選択 → 入力反映 --- */
+function selectCompany(id) {
+  selectedId = id;
+  const c = companies.find(x => x.id === id);
+
+  document.getElementById("companyName").value = c.companyName;
+  document.getElementById("furigana").value = c.furigana || "";
+  document.getElementById("url").value = c.url;
+  document.getElementById("etc").value = c.etc;
+  document.getElementById("etc2").value = c.etc2 || "";
+}
+
+/* --- モーダル表示 --- */
+function openModal(id) {
+  const c = companies.find(x => x.id === id);
+
+  document.getElementById("modalTitle").textContent = c.companyName;
+  document.getElementById("modalFurigana").textContent = c.furigana || "(なし)";
+  document.getElementById("modalUrl").innerHTML =
+    c.url ? `<a href="${c.url}" target="_blank">${c.url}</a>` : "(なし)";
+  document.getElementById("modalEtc").textContent = c.etc || "(なし)";
+  document.getElementById("modalEtc2").textContent = c.etc2 || "(なし)";
+
+  document.getElementById("modalOverlay").style.display = "flex";
+}
+function closeModal() {
+  document.getElementById("modalOverlay").style.display = "none";
+}
+
+/* --- 追加 --- */
+function addCompany() {
+  const data = getFormValues();
+
+  if (!data.companyName) return alert("会社名を入力してください");
+
+  if (companies.some(c => c.companyName === data.companyName))
+    return alert("同じ会社名が既に存在します");
+
+  fetch(API_URL, {
+    method: "POST",
+    headers: {"Content-Type": "application/json"},
+    body: JSON.stringify(data)
+  }).then(loadCompanies);
+}
+
+/* --- 編集 --- */
+function updateCompany() {
+  if (!selectedId) return alert("編集する会社を選んでください");
+
+  const data = getFormValues();
+
+  if (companies.some(c =>
+      c.companyName === data.companyName && c.id !== selectedId))
+    return alert("同じ会社名が既に存在します");
+
+  fetch(`${API_URL}/${selectedId}`, {
+    method: "PUT",
+    headers: {"Content-Type": "application/json"},
+    body: JSON.stringify(data)
+  }).then(loadCompanies);
+}
+
+/* --- 削除 --- */
+function deleteSelected() {
+  if (!selectedId) return alert("削除する会社を選んでください");
+  if (!confirm("本当に削除しますか？")) return;
+
+  fetch(`${API_URL}/${selectedId}`, { method: "DELETE" })
+    .then(() => { selectedId = null; loadCompanies(); });
+}
+
+/* --- 入力欄から値をまとめる --- */
+function getFormValues() {
+  return {
+    companyName: document.getElementById("companyName").value.trim(),
+    furigana: document.getElementById("furigana").value.trim(),
+    url: document.getElementById("url").value.trim(),
+    etc: document.getElementById("etc").value.trim(),
+    etc2: document.getElementById("etc2").value.trim()
+  };
+}
+
+/* --- 検索 --- */
+function searchCompanies() {
+  const key = document.getElementById("searchBox").value.trim();
+  if (!key) return renderTable(companies);
+
+  renderTable(
+    companies.filter(c => c.companyName.includes(key))
+  );
+}
+
+/* --- ソート切り替え --- */
+function sortBy(key) {
+  if (sortKey === key) sortAsc = !sortAsc;
+  else {
+    sortKey = key;
+    sortAsc = true;
+  }
+  renderTable(companies);
+}
+
+/* 初期表示 */
+loadCompanies();
+</script>
+
+</body>
+</html>
