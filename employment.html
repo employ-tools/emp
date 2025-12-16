@@ -124,18 +124,21 @@ th { background: #f0f0f0; }
 </div>
 <hr id="editSectionHr" style="display:none;">
 
-<div id="backupRestoreSection" style="display: none; margin-bottom: 20px;">
-    <h3>📊 バックアップ / リストア</h3>
-    <button class="big-button manage-button" onclick="backupData()">バックアップ (JSONダウンロード)</button>
-    <input type="file" id="restoreFile" accept=".json" style="margin-left: 10px;">
-    <button class="big-button delete-button" onclick="restoreData()">リストア (上書き)</button>
-    <br>
-    <button class="big-button delete-button" onclick="manualDeleteAll()" style="margin-top: 10px;">🚨 全データ強制削除</button>
-    <p style="font-size: 0.8em; color: gray; margin-top: 5px;">※リストア機能は、現在のデータをすべて消去してからファイルの内容に置き換えます。大量データ削除の際に失敗することがあるため、**二重登録を防ぐには、リストア前に「全データ強制削除」を実行**してください。</p>
+
+<button class="big-button manage-button" onclick="toggleBackupRestore()">バックアップ / リストア (トグル)</button>
+
+<div id="backupRestoreContainer" style="display: none;">
+    <div id="backupRestoreSection" style="margin-top: 10px; margin-bottom: 20px; display: none;">
+        <h3>📊 バックアップ / リストア</h3>
+        <button class="big-button manage-button" onclick="backupData()">バックアップ (JSONダウンロード)</button>
+        <input type="file" id="restoreFile" accept=".json" style="margin-left: 10px;">
+        <button class="big-button delete-button" onclick="restoreData()">リストア (上書き)</button>
+        <br>
+        <button class="big-button delete-button" onclick="manualDeleteAll()" style="margin-top: 10px;">🚨 全データ強制削除</button>
+        <p style="font-size: 0.8em; color: gray; margin-top: 5px;">※リストア機能は、現在のデータをすべて消去してからファイルの内容に置き換えます。大量データ削除の際に失敗することがあるため、**二重登録を防ぐには、リストア前に「全データ強制削除」を実行**してください。</p>
+    </div>
+    <hr id="backupRestoreHr" style="display: none;">
 </div>
-<hr id="backupRestoreHr" style="display: none;">
-
-
 <button class="big-button" onclick="showAddForm()">新規追加</button>
 
 <hr>
@@ -284,6 +287,9 @@ function updateUIVisibility() {
     const editSectionHr = document.getElementById("editSectionHr");
     const historyContainer = document.getElementById("historyContainer"); 
     const companyManageButton = document.getElementById("companyManageButton");
+    
+    // バックアップ/リストア関連の要素IDを修正
+    const backupRestoreContainer = document.getElementById("backupRestoreContainer");
     const backupRestoreSection = document.getElementById("backupRestoreSection");
     const backupRestoreHr = document.getElementById("backupRestoreHr");
 
@@ -294,22 +300,28 @@ function updateUIVisibility() {
     
     if (classFilterContainer) classFilterContainer.style.display = isStudent ? "none" : "";
     
-    // ↓↓↓ 修正箇所：管理者・学生の両方で表示するように変更 ↓↓↓
+    // 管理者・学生の両方で表示
     if (companyManageButton) companyManageButton.style.display = "inline-block"; 
-    // ↑↑↑ 修正箇所：管理者・学生の両方で表示するように変更 ↑↑↑
     
     if (window.loginRole === "admin") {
         editSection.style.display = 'none';
         editSectionHr.style.display = 'none';
         if (historyContainer) historyContainer.style.display = 'none'; 
-        if (backupRestoreSection) backupRestoreSection.style.display = 'block';
-        if (backupRestoreHr) backupRestoreHr.style.display = 'block';
+        
+        // 管理者のみコンテナ (トグルボタン) を表示
+        if (backupRestoreContainer) backupRestoreContainer.style.display = 'block'; 
+        
+        // 中身は初期状態として非表示
+        if (backupRestoreSection) backupRestoreSection.style.display = 'none';
+        if (backupRestoreHr) backupRestoreHr.style.display = 'none';
+
     } else if (window.loginRole === "student") {
         editSection.style.display = 'block';
         editSectionHr.style.display = 'block';
         if (historyContainer) historyContainer.style.display = 'none';
-        if (backupRestoreSection) backupRestoreSection.style.display = 'none';
-        if (backupRestoreHr) backupRestoreHr.style.display = 'none';
+        
+        // 学生はコンテナ全体を非表示
+        if (backupRestoreContainer) backupRestoreContainer.style.display = 'none';
     }
     
     displayWelcomeMessage();
@@ -357,7 +369,13 @@ async function tryLogin(){
       }
   }
   
-  if (pwInput === "admin" || pwInput === "管理者パスワード" || loginId.toLowerCase() === "admin") {
+  // ★★★ ログインロジック修正開始 ★★★
+  
+  // 1. 管理者としてログインできるのは、IDが 'admin' かつパスワードが 'admin' の場合のみ
+  const isAdminId = loginId.toLowerCase() === "admin";
+  const isAdminPw = pwInput === "admin" || pwInput === "管理者パスワード";
+  
+  if (isAdminId && isAdminPw) {
       loginErr.textContent = "";
       loginBox.style.display="none";
       app.style.display="block";
@@ -371,7 +389,12 @@ async function tryLogin(){
       return;
   }
 
-  if (studentsList.includes(loginId) && pwInput === "") {
+  // 2. 学生としてログイン
+  const isStudentId = studentsList.includes(loginId);
+  const isStudentPwValid = pwInput === ""; 
+  
+  // IDが学生番号であれば、パスワードが何であっても（空か、adminか、その他）学生としてログインさせる
+  if (isStudentId) {
       loginErr.textContent = "";
       loginBox.style.display="none";
       app.style.display="block";
@@ -383,15 +406,36 @@ async function tryLogin(){
       updateUIVisibility();
       loadEmployment();
       loadCompanies();
-  } else {
-      loginErr.textContent = "学籍番号または管理者パスワードが正しくありません。";
+  }
+  else {
+      // どちらにも該当しない場合
+      loginErr.textContent = "学籍番号または管理者ID/パスワードが正しくありません。";
       document.getElementById("pwInput").value = "";
   }
+  // ★★★ ログインロジック修正終了 ★★★
 }
 
 function openCompanyManager() {
     window.open('company.html', '_blank');
 }
+
+
+// ↓↓↓ 新しいトグル関数を追加 ↓↓↓
+function toggleBackupRestore() {
+    if (window.loginRole !== "admin") return; 
+    
+    const section = document.getElementById("backupRestoreSection");
+    const hr = document.getElementById("backupRestoreHr");
+
+    if (section.style.display === 'none') {
+        section.style.display = 'block';
+        hr.style.display = 'block';
+    } else {
+        section.style.display = 'none';
+        hr.style.display = 'none';
+    }
+}
+// ↑↑↑ 新しいトグル関数を追加 ↑↑↑
 
 
 // ★★★ Firestore対応: loadEmployment (Read) ★★★
