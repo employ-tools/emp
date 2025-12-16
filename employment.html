@@ -2,9 +2,10 @@
 <html lang="ja">
 <head>
 <meta charset="UTF-8">
-<title>就職状況管理</title>
+<title>就職状況管理 (Firestore版)</title>
 
 <style>
+/* ... (スタイルシートは変更なし) ... */
 body { font-family: sans-serif; margin: 16px; }
 #app { display: none; }
 
@@ -39,9 +40,27 @@ th { background: #f0f0f0; }
 /* modal */
 #companyModal { display:none; position:fixed; inset:0; background:rgba(0,0,0,0.4); }
 #companyModal .inner { background:#fff; max-width:600px; margin:80px auto; padding:16px; border-radius:8px; }
+
+/* 履歴リストのスタイル */
+#historyList ul {
+    list-style-type: none;
+    padding-left: 0;
+    margin: 0;
+}
+#historyList li {
+    padding: 4px 8px;
+    border-bottom: 1px dotted #ccc;
+    font-size: 0.9em;
+}
+#historyList li:last-child {
+    border-bottom: none;
+}
 </style>
 </head>
 <body>
+
+<script src="https://www.gstatic.com/firebasejs/8.10.0/firebase-app.js"></script>
+<script src="https://www.gstatic.com/firebasejs/8.10.0/firebase-firestore.js"></script>
 
 <div id="loginBox">
   <h2>ログイン</h2>
@@ -62,7 +81,7 @@ th { background: #f0f0f0; }
   <input id="searchBox" class="input-text" placeholder="学籍番号で検索">
   <button id="searchButton" class="big-button" onclick="searchEmployment()">検索</button>
   <button class="big-button" onclick="clearAll()">クリア</button>
-  <button id="companyManageButton" class="big-button manage-button" onclick="openCompanyManager()">会社登録</button>
+  <button id="companyManageButton" class="big-button manage-button" onclick="openCompanyManager()" style="display: none;">会社登録</button>
 </div>
 
 <hr>
@@ -94,8 +113,28 @@ th { background: #f0f0f0; }
     <button class="big-button" onclick="addEmployment()">追加</button>
     <button class="big-button" onclick="updateEmployment()">編集</button>
     <button id="deleteButton" class="big-button delete-button" onclick="deleteEmployment()">削除</button>
+
+    <div id="historyContainer" style="margin-top: 15px; border-top: 1px solid #ccc; padding-top: 10px; display: none;">
+        <h4>ステータス履歴 
+            <span id="historyToggle" style="cursor: pointer; color: blue; font-size: 0.8em;">(表示/非表示)</span>
+        </h4>
+        <div id="historyList" style="max-height: 200px; overflow-y: auto; border: 1px solid #eee; padding: 5px; display: none;">
+            </div>
+    </div>
 </div>
 <hr id="editSectionHr" style="display:none;">
+
+<div id="backupRestoreSection" style="display: none; margin-bottom: 20px;">
+    <h3>📊 バックアップ / リストア</h3>
+    <button class="big-button manage-button" onclick="backupData()">バックアップ (JSONダウンロード)</button>
+    <input type="file" id="restoreFile" accept=".json" style="margin-left: 10px;">
+    <button class="big-button delete-button" onclick="restoreData()">リストア (上書き)</button>
+    <br>
+    <button class="big-button delete-button" onclick="manualDeleteAll()" style="margin-top: 10px;">🚨 全データ強制削除</button>
+    <p style="font-size: 0.8em; color: gray; margin-top: 5px;">※リストア機能は、現在のデータをすべて消去してからファイルの内容に置き換えます。大量データ削除の際に失敗することがあるため、**二重登録を防ぐには、リストア前に「全データ強制削除」を実行**してください。</p>
+</div>
+<hr id="backupRestoreHr" style="display: none;">
+
 
 <button class="big-button" onclick="showAddForm()">新規追加</button>
 
@@ -115,7 +154,7 @@ th { background: #f0f0f0; }
 <div id="companyModal">
   <div class="inner">
     <h3>会社選択</h3>
-    <input id="companySearch" class="input-text" placeholder="会社名検索">
+    <input id="companySearch" class="input-text" placeholder="会社名またはふりがなで検索">
     <table>
       <tbody id="companyList"></tbody>
     </table>
@@ -124,12 +163,14 @@ th { background: #f0f0f0; }
 </div>
 
 <script>
-const API_EMP = "https://69391958c8d59937aa067b4c.mockapi.io/employment";
-const API_COMPANY = "https://69391958c8d59937aa067b4c.mockapi.io/company";
+// MockAPIのURLは不要になりました
+// const API_EMP = "https://69391958c8d59937aa067b4c.mockapi.io/employment";
+// const API_COMPANY = "https://69391958c8d59937aa067b4c.mockapi.io/company";
 
 let employment=[];
 let companies=[];
 let selectedId=null;
+let db = null; // Firestoreインスタンスを格納
 
 let studentsList = []; 
 let studentsMap = new Map();
@@ -143,12 +184,62 @@ window.loginRole = null;
 window.loginStudentId = null;
 window.loginStudentName = null;
 
+
+// 履歴処理ヘルパー関数 (変更なし)
+function parseHistory(historyString) {
+    try {
+        const history = JSON.parse(historyString || '[]');
+        return Array.isArray(history) ? history : [];
+    } catch (e) {
+        return [];
+    }
+}
+function stringifyHistory(historyArray) {
+    return JSON.stringify(historyArray);
+}
+function createHistoryEvent(status, date) {
+    // 日付が空の場合は今日の日付を使用
+    const eventDate = date || new Date().toISOString().split('T')[0];
+    return {
+        date: eventDate,
+        status: status
+    };
+}
+
+
+// ★★★ Firebase初期化 ★★★
+document.addEventListener('DOMContentLoaded', async () => {
+    // 【以前のステップで確認した正しいAPI Keyを含むConfig情報を設定】
+    const firebaseConfig = {
+      apiKey: "AIzaSyDfjLJBbOBcaXxFjkOXU29dCJWwtmbv9tk",
+      authDomain: "mockapi-demo.firebaseapp.com",
+      projectId: "mockapi-demo",
+      storageBucket: "mockapi-demo.firebasestorage.app",
+      messagingSenderId: "819480407444",
+      appId: "1:819480407444:web:3012c7d0bd56c907333381",
+      measurementId: "G-YE6ZKLSSZC"
+    };
+    
+    if (!firebase.apps.length) {
+        firebase.initializeApp(firebaseConfig);
+    }
+    db = firebase.firestore(); 
+
+    // 初期ロードに必要な処理をawaitで確実に実行
+    await loadStudents();
+    await loadStatusColors();
+    loadEmployment();
+    loadCompanies();
+});
+// ★★★ Firebase初期化 終了 ★★★
+
+
+// loadStatusColors, loadStudents, tryLogin などは変更なし
 async function loadStatusColors() {
     try {
         const response = await fetch('status_colors.json');
         if (!response.ok) throw new Error('Failed to load status_colors.json: ' + response.statusText);
         statusColors = await response.json();
-        console.log("Status colors loaded successfully.");
     } catch (error) {
         console.error("Error loading status colors data.", error);
     }
@@ -176,7 +267,6 @@ async function loadStudents() {
         }
       }
     }
-    console.log("Students loaded successfully.");
   } catch (error) {
     console.error("Error loading students data.", error);
     document.getElementById("loginErr").textContent = "エラー: 学生データの読み込みに失敗しました。Webサーバー経由でアクセスしているか確認してください。";
@@ -192,6 +282,11 @@ function updateUIVisibility() {
     const classFilterContainer = document.getElementById("classFilterContainer"); 
     const editSection = document.getElementById("editSection");
     const editSectionHr = document.getElementById("editSectionHr");
+    const historyContainer = document.getElementById("historyContainer"); 
+    const companyManageButton = document.getElementById("companyManageButton");
+    const backupRestoreSection = document.getElementById("backupRestoreSection");
+    const backupRestoreHr = document.getElementById("backupRestoreHr");
+
 
     if (searchBox) searchBox.style.display = isStudent ? "none" : "";
     if (searchButton) searchButton.style.display = isStudent ? "none" : "";
@@ -199,12 +294,22 @@ function updateUIVisibility() {
     
     if (classFilterContainer) classFilterContainer.style.display = isStudent ? "none" : "";
     
+    // ↓↓↓ 修正箇所：管理者・学生の両方で表示するように変更 ↓↓↓
+    if (companyManageButton) companyManageButton.style.display = "inline-block"; 
+    // ↑↑↑ 修正箇所：管理者・学生の両方で表示するように変更 ↑↑↑
+    
     if (window.loginRole === "admin") {
         editSection.style.display = 'none';
         editSectionHr.style.display = 'none';
+        if (historyContainer) historyContainer.style.display = 'none'; 
+        if (backupRestoreSection) backupRestoreSection.style.display = 'block';
+        if (backupRestoreHr) backupRestoreHr.style.display = 'block';
     } else if (window.loginRole === "student") {
         editSection.style.display = 'block';
         editSectionHr.style.display = 'block';
+        if (historyContainer) historyContainer.style.display = 'none';
+        if (backupRestoreSection) backupRestoreSection.style.display = 'none';
+        if (backupRestoreHr) backupRestoreHr.style.display = 'none';
     }
     
     displayWelcomeMessage();
@@ -213,7 +318,8 @@ function updateUIVisibility() {
 function showAddForm() {
     const editSection = document.getElementById("editSection");
     const editSectionHr = document.getElementById("editSectionHr");
-    
+    const historyContainer = document.getElementById("historyContainer");
+
     document.getElementById("student").value = (window.loginRole === "student" ? window.loginStudentId : "");
     document.getElementById("companyName").value = "";
     document.getElementById("statusSelect").value = "説明会";
@@ -222,6 +328,11 @@ function showAddForm() {
 
     editSection.style.display = 'block';
     editSectionHr.style.display = 'block';
+    
+    if (window.loginRole === "admin" && historyContainer) {
+        historyContainer.style.display = 'none';
+        document.getElementById("historyList").innerHTML = '';
+    }
 }
 
 function displayWelcomeMessage() {
@@ -283,37 +394,50 @@ function openCompanyManager() {
 }
 
 
-function loadEmployment() {
-  fetch(API_EMP)
-    .then(r => r.json())
-    .then(data => {
-      const allData = data;
-      
-      employment = (window.loginRole === "student")
-        ? allData.filter(e => e.student === window.loginStudentId)
-        : allData; 
+// ★★★ Firestore対応: loadEmployment (Read) ★★★
+async function loadEmployment() {
+  if (!db) return;
+  
+  try {
+    const snapshot = await db.collection("employment").get();
+    
+    // スナップショットを配列に変換。ドキュメントIDをidとして保持。
+    const allData = snapshot.docs.map(doc => ({
+        id: doc.id, 
+        ...doc.data()
+    }));
+    
+    employment = (window.loginRole === "student")
+      ? allData.filter(e => e.student === window.loginStudentId)
+      : allData; 
+    
+    // 学籍番号順ソート
+    employment.sort((a, b) => a.student.localeCompare(b.student));
+    
+    if (window.loginRole === "admin") {
+        currentFilterClass = 'ALL'; 
+        renderClassFilters(); 
+        renderTable(employment);
+        document.getElementById("editSection").style.display = 'none';
+        document.getElementById("editSectionHr").style.display = 'none';
 
-      if (window.loginRole === "admin") {
-          currentFilterClass = 'ALL'; 
-          renderClassFilters(); 
-          renderTable(employment);
-          document.getElementById("editSection").style.display = 'none';
-          document.getElementById("editSectionHr").style.display = 'none';
+    } else {
+        renderTable(employment);
+    }
 
-      } else {
-          renderTable(employment);
-      }
-
-      if (window.loginRole === "student") {
-          document.getElementById("student").value = window.loginStudentId;
-          document.getElementById("student").readOnly = true;
-      } else {
-          document.getElementById("student").readOnly = false;
-      }
-    });
+    if (window.loginRole === "student") {
+        document.getElementById("student").value = window.loginStudentId;
+        document.getElementById("student").readOnly = true;
+    } else {
+        document.getElementById("student").readOnly = false;
+    }
+  } catch (error) {
+      console.error("Firestoreデータ取得エラー (employment):", error);
+      alert("就職状況データの読み込みに失敗しました。Firebaseの設定とセキュリティルールを確認してください。");
+  }
 }
 
-// ★ 修正: renderTable関数に名前表示を追加
+
 function renderTable(list){
   const tb=document.getElementById("employment-table");
   tb.innerHTML="";
@@ -321,10 +445,8 @@ function renderTable(list){
     const tr=document.createElement("tr");
     tr.onclick=()=>selectRow(e.id);
     
-    // 学生の名前を取得
     const studentName = studentsMap.get(e.student) || "不明"; 
     
-    // 学籍番号と名前のセルを追加
     tr.innerHTML=`<td>${e.student}</td><td>${studentName}</td><td>${e.companyName}</td><td>${e.status}</td><td>${e.date||""}</td>`;
 
     const colorInfo = statusColors[e.status];
@@ -337,6 +459,41 @@ function renderTable(list){
   });
 }
 
+function renderHistory(historyString) {
+    const historyListContainer = document.getElementById("historyList");
+    const historyContainer = document.getElementById("historyContainer");
+    
+    if (window.loginRole !== "admin") {
+        historyContainer.style.display = 'none';
+        return;
+    }
+
+    historyContainer.style.display = 'block';
+    historyListContainer.innerHTML = '';
+    
+    const historyArray = parseHistory(historyString);
+    
+    // 日付の新しい順にソート
+    historyArray.sort((a, b) => new Date(b.date) - new Date(a.date));
+
+    if (historyArray.length === 0) {
+        historyListContainer.innerHTML = '<p style="margin: 5px;">履歴なし</p>';
+        return;
+    }
+
+    const ul = document.createElement('ul');
+    
+    historyArray.forEach(item => {
+        const li = document.createElement('li');
+        li.textContent = `[${item.date}] ${item.status}`;
+        ul.appendChild(li);
+    });
+
+    historyListContainer.appendChild(ul);
+    // 履歴リストは最初は非表示
+    historyListContainer.style.display = 'none'; 
+}
+
 function selectRow(id){
   selectedId=id;
   const e=employment.find(x=>x.id===id);
@@ -346,6 +503,10 @@ function selectRow(id){
   document.getElementById("statusSelect").value=e.status;
   document.getElementById("date").value=e.date||"";
 
+  if (window.loginRole === "admin") {
+      renderHistory(e.history);
+  }
+  
   if (window.loginRole === "admin" || window.loginRole === "student") {
       document.getElementById("editSection").style.display = 'block';
       document.getElementById("editSectionHr").style.display = 'block';
@@ -385,6 +546,10 @@ function filterByClass(classKey) {
 
     currentFilterClass = classKey;
     renderClassFilters(); 
+    
+    document.getElementById("editSection").style.display = 'none';
+    document.getElementById("editSectionHr").style.display = 'none';
+    selectedId = null; 
 
     let filteredEmployment = employment;
 
@@ -400,36 +565,131 @@ function filterByClass(classKey) {
 }
 
 
-function loadCompanies(){
-  fetch(API_COMPANY).then(r=>r.json()).then(d=>{ companies=d; renderCompanyList(d); });
+// ★★★ Firestore対応: loadCompanies (Read) ★★★
+async function loadCompanies(){
+  if (!db) return;
+  try {
+    const snapshot = await db.collection("companies").get();
+    const data = snapshot.docs.map(doc => ({
+        id: doc.id,
+        ...doc.data()
+    }));
+    companies = data; 
+    renderCompanyList(data);
+  } catch (error) {
+    console.error("Firestoreデータ取得エラー (companies):", error);
+  }
 }
 
-function addEmployment(){
-  if (window.loginRole === "student" && student.value !== window.loginStudentId) {
+
+// ★★★ Firestore対応: addEmployment (Create) ★★★
+async function addEmployment(){
+  const studentId = student.value;
+  const company = companyName.value;
+
+  if (window.loginRole === "student" && studentId !== window.loginStudentId) {
       alert("学生は自分の就職状況のみを追加・編集できます。");
       return;
   }
-  fetch(API_EMP,{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({student:student.value,companyName:companyName.value,status:statusSelect.value,date:date.value})}).then(loadEmployment);
+
+  const isDuplicate = employment.some(e => 
+      e.student === studentId && e.companyName === company
+  );
+  
+  if (isDuplicate) {
+      alert(`エラー: 学籍番号 ${studentId} は既に「${company}」の就職状況を登録しています。\n\n編集する場合は、リストから既存の項目を選択してください。`);
+      return; 
+  }
+  
+  const newStatus = statusSelect.value;
+  const newDate = date.value;
+  
+  const initialHistory = [createHistoryEvent(newStatus, newDate)];
+  const historyString = stringifyHistory(initialHistory);
+  
+  // Firestoreに追加
+  try {
+    await db.collection("employment").add({
+      student:studentId,
+      companyName:company,
+      status:newStatus,
+      date:newDate,
+      history: historyString // 履歴を追加
+    });
+    
+    // 成功後、再ロード
+    loadEmployment();
+  } catch (error) {
+    console.error("データ追加エラー:", error);
+    alert("データ追加中にエラーが発生しました。Firestoreのセキュリティルールを確認してください。");
+  }
 }
 
-function updateEmployment(){
+// ★★★ Firestore対応: updateEmployment (Update) ★★★
+async function updateEmployment(){
   if(!selectedId)return;
   if (window.loginRole === "student" && student.value !== window.loginStudentId) {
       alert("学生は自分の就職状況のみを追加・編集できます。");
       return;
   }
-  fetch(`${API_EMP}/${selectedId}`,{method:"PUT",headers:{"Content-Type":"application/json"},body:JSON.stringify({student:student.value,companyName:companyName.value,status:statusSelect.value,date:date.value})}).then(loadEmployment);
+  
+  const newStatus = statusSelect.value;
+  const newDate = date.value;
+  
+  const existingRecord = employment.find(x => x.id === selectedId);
+  if (!existingRecord) return;
+  
+  let historyArray = parseHistory(existingRecord.history);
+  
+  const newHistoryEvent = createHistoryEvent(newStatus, newDate);
+  
+  const latestHistory = historyArray.length > 0 ? historyArray[historyArray.length - 1] : null;
+
+  if (!latestHistory || latestHistory.status !== newStatus || latestHistory.date !== newDate) {
+      historyArray.push(newHistoryEvent);
+  } else {
+      console.log("Status/Date not changed. History not updated.");
+  }
+  
+  // Firestoreを更新
+  try {
+    await db.collection("employment").doc(selectedId).update({
+      student:student.value,
+      companyName:companyName.value,
+      status:newStatus,
+      date:newDate,
+      history: stringifyHistory(historyArray) // 履歴を更新
+    });
+    
+    // 成功後、再ロード
+    loadEmployment();
+  } catch (error) {
+    console.error("データ更新エラー:", error);
+    alert("データ更新中にエラーが発生しました。Firestoreのセキュリティルールを確認してください。");
+  }
 }
 
-function deleteEmployment(){
+// ★★★ Firestore対応: deleteEmployment (Delete) ★★★
+async function deleteEmployment(){
   if(!selectedId||!confirm("削除しますか？"))return;
+  
   const e=employment.find(x=>x.id===selectedId);
   if (window.loginRole === "student" && e.student !== window.loginStudentId) {
       alert("学生は自分の就職状況のみを削除できます。");
       return;
   }
-  fetch(`${API_EMP}/${selectedId}`,{method:"DELETE"}).then(loadEmployment);
+  
+  // Firestoreから削除
+  try {
+    await db.collection("employment").doc(selectedId).delete();
+    // 成功後、再ロード
+    loadEmployment();
+  } catch (error) {
+    console.error("データ削除エラー:", error);
+    alert("データ削除中にエラーが発生しました。Firestoreのセキュリティルールを確認してください。");
+  }
 }
+
 
 function searchEmployment(){
   const k=searchBox.value.trim();
@@ -446,8 +706,7 @@ function searchEmployment(){
           ? employment.filter(e => e.student === window.loginStudentId)
           : employment;
   }
-
-  // 検索は学籍番号に対して行われますが、表示は名前付きのテーブルを使用します
+  
   renderTable(dataToSearch.filter(e=>e.student.includes(k)));
 }
 
@@ -467,8 +726,21 @@ function openCompanyModal(){
 function closeCompanyModal(){ companyModal.style.display="none"; }
 
 companySearch.oninput=()=>{
-  const k=companySearch.value.trim();
-  renderCompanyList(!k?companies:companies.filter(c=>c.companyName.includes(k)));
+  const k = companySearch.value.trim().toLowerCase();
+  
+  if (!k) {
+    renderCompanyList(companies);
+    return;
+  }
+  
+  const filteredList = companies.filter(c => {
+    const name = c.companyName ? c.companyName.toLowerCase() : '';
+    const furigana = c.furigana ? c.furigana.toLowerCase() : '';
+    
+    return name.includes(k) || furigana.includes(k);
+  });
+  
+  renderCompanyList(filteredList);
 };
 
 function renderCompanyList(list){
@@ -482,8 +754,180 @@ function renderCompanyList(list){
   });
 }
 
-loadStudents();
-loadStatusColors();
+document.addEventListener('DOMContentLoaded', () => {
+    const toggle = document.getElementById('historyToggle');
+    if (toggle) {
+        toggle.onclick = () => {
+            const list = document.getElementById('historyList');
+            list.style.display = list.style.display === 'none' ? 'block' : 'none';
+        };
+    }
+});
+
+
+// ★★★ Firestore対応: バックアップ/リストア機能 ★★★
+
+/**
+ * JSONオブジェクトをファイルとしてダウンロードさせる
+ */
+function downloadJson(data, filename) {
+    const json = JSON.stringify(data, null, 2);
+    const blob = new Blob([json], { type: 'application/json' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = filename;
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    URL.revokeObjectURL(url);
+    alert(`バックアップが完了しました: ${filename}`);
+}
+
+/**
+ * Firestoreから全データを取得し、JSONファイルとしてダウンロードする (Read)
+ */
+async function backupData() {
+    // 権限チェックはリストア/バックアップのメイン機能のみ管理者に限定
+    if (window.loginRole !== "admin" || !confirm("現在のデータをすべて取得し、JSONファイルとしてダウンロードしますか？")) return;
+    if (!db) return;
+    
+    try {
+        const snapshot = await db.collection("employment").get();
+        // FirestoreのデータにIDを含めてMockAPI形式に変換
+        const data = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() })); 
+        
+        const timestamp = new Date().toISOString().slice(0, 19).replace(/[:T-]/g, '');
+        const filename = `employment_backup_${timestamp}.json`;
+        
+        downloadJson(data, filename);
+    } catch (error) {
+        alert("バックアップ中にエラーが発生しました: " + error.message);
+    }
+}
+
+/**
+ * Firestoreの全データをDELETEする（全件取得し、順次DELETEリクエストを実行） (Delete)
+ */
+async function deleteAllEmployment() {
+    console.log("既存データ削除を開始します...");
+    
+    if (!db) return { total: 0, success: 0, fail: 0 };
+
+    const snapshot = await db.collection("employment").get();
+    const existingRecords = snapshot.docs;
+    
+    if (existingRecords.length === 0) {
+        console.log("削除対象の既存データはありません。");
+        return { total: 0, success: 0, fail: 0 };
+    }
+
+    let successCount = 0;
+    let failCount = 0;
+
+    for (const doc of existingRecords) {
+        try {
+            await db.collection("employment").doc(doc.id).delete();
+            successCount++;
+        } catch (error) {
+            failCount++;
+            console.error(`削除中にエラーが発生: ID ${doc.id}, エラー: ${error.message}`);
+        }
+    }
+    
+    console.log(`既存データ削除完了。合計: ${existingRecords.length}件, 成功: ${successCount}件, 失敗: ${failCount}件`);
+    
+    return { 
+        total: existingRecords.length, 
+        success: successCount, 
+        fail: failCount 
+    };
+}
+
+/**
+ * 管理者向け：全データ強制削除を実行する (Delete)
+ */
+async function manualDeleteAll() {
+    if (window.loginRole !== "admin" || !confirm("【最終確認】Firestore上の就職状況データをすべて強制的に削除します。\n\nこの操作は元に戻せません。本当に実行しますか？")) return;
+
+    const result = await deleteAllEmployment();
+    
+    if (result.fail > 0) {
+        alert(`削除が完了しましたが、${result.fail}件のデータの削除に失敗した可能性があります。ブラウザをリロードしてデータが消えているか確認してください。`);
+    } else {
+        alert(`既存データ ${result.total}件 の削除がすべて完了しました。`);
+    }
+    loadEmployment();
+}
+
+/**
+ * リストア処理: 既存データを削除後、ファイルの内容を一括登録する (Delete/Create)
+ */
+async function restoreData() {
+    if (window.loginRole !== "admin") return;
+    if (!db) return;
+
+    if (!confirm("【警告】現在のFirestore上の全データを削除し、選択したファイルの内容で上書きリストアします。実行しますか？")) return;
+    
+    const fileInput = document.getElementById('restoreFile');
+    const file = fileInput.files[0];
+    
+    if (!file) {
+        alert("リストアするJSONファイルを選択してください。");
+        return;
+    }
+
+    try {
+        const fileContent = await file.text();
+        const restoreDataArray = JSON.parse(fileContent);
+
+        if (!Array.isArray(restoreDataArray)) {
+            alert("ファイルの内容が配列形式のJSONではありません。");
+            return;
+        }
+
+        // 1. 既存データの削除
+        const deleteResult = await deleteAllEmployment();
+        if (deleteResult.fail > 0) {
+            if (!confirm(`警告: 既存データの削除時に ${deleteResult.fail} 件の失敗がありました。\nこのままリストアを続行すると、データが残る可能性があります。\n\n続行しますか？`)) {
+                return;
+            }
+        }
+        
+        // 2. 新データの登録
+        let postSuccessCount = 0;
+        let postFailCount = 0;
+
+        for (const record of restoreDataArray) {
+            // MockAPIのIDはFirestoreでは自動生成されるため不要
+            const { id, ...dataToPost } = record; 
+            
+            try {
+                // Firestoreにadd()で登録
+                await db.collection("employment").add(dataToPost);
+                postSuccessCount++;
+            } catch (e) {
+                postFailCount++;
+                console.error("リストアPOST失敗:", e);
+            }
+        }
+
+        let alertMessage = `リストアが完了しました。\n新規データ登録 成功: ${postSuccessCount}件 / 失敗: ${postFailCount}件`;
+        if (deleteResult.fail > 0) {
+             alertMessage += `\n\n【注意】既存データの削除失敗が ${deleteResult.fail} 件あったため、データが残っている可能性があります。`;
+        }
+        alert(alertMessage);
+        
+        loadEmployment(); 
+        
+    } catch (error) {
+        alert("リストア中にエラーが発生しました。ファイル形式を確認してください: " + error.message);
+    }
+}
+
+// ★★★ バックアップ/リストア機能 終了 ★★★
+
+// loadStudents, loadStatusColors は DOMContentLoaded 内で実行されます
 </script>
 </body>
 </html>

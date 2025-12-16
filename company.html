@@ -2,8 +2,9 @@
 <html lang="ja">
 <head>
   <meta charset="UTF-8">
-  <title>Company 管理 (MockAPI)</title>
+  <title>Company 管理画面 v1.110 (Firestore版)</title>
   <style>
+    /* デザインは絶対にそのまま */
     table {
       border-collapse: collapse;
       width: 100%;
@@ -89,10 +90,13 @@
 </head>
 <body>
 
+<script src="https://www.gstatic.com/firebasejs/8.10.0/firebase-app.js"></script>
+<script src="https://www.gstatic.com/firebasejs/8.10.0/firebase-firestore.js"></script>
+
 <h1>Company 管理</h1>
 
 <input id="searchBox" placeholder="会社名で検索">
-<button onclick="searchCompanies()">検索</button>
+<button class="big-button" onclick="searchCompanies()">検索</button>
 
 <hr>
 
@@ -132,7 +136,6 @@ URL:<br>
   <tbody id="company-table"></tbody>
 </table>
 
-<!-- モーダル -->
 <div id="modalOverlay" onclick="closeModal()">
   <div id="modalWindow" onclick="event.stopPropagation()">
     <span id="modalClose" onclick="closeModal()">×</span>
@@ -146,22 +149,59 @@ URL:<br>
 </div>
 
 <script>
-const API_URL = "https://69391958c8d59937aa067b4c.mockapi.io/company/";
+// MockAPI URLを削除またはコメントアウト
+// const API_URL = "https://69391958c8d59937aa067b4c.mockapi.io/company/";
+
 let companies = [];
 let selectedId = null;
+let db = null; // 【修正済み】グローバル変数として db を定義
 
 /* ソート状態保持 */
 let sortKey = "companyName";
 let sortAsc = true;
 
-/* --- 一覧取得 --- */
-function loadCompanies() {
-  fetch(API_URL)
-    .then(r => r.json())
-    .then(data => {
-      companies = data;
-      renderTable(companies);
-    });
+
+// ★★★ Firebase初期化 ★★★
+document.addEventListener('DOMContentLoaded', () => {
+    // 【ご提供いただいた正しいAPI Keyを含むConfig情報を設定】
+    const firebaseConfig = {
+      apiKey: "AIzaSyDfjLJBbOBcaXxFjkOXU29dCJWwtmbv9tk",
+      authDomain: "mockapi-demo.firebaseapp.com",
+      projectId: "mockapi-demo",
+      storageBucket: "mockapi-demo.firebasestorage.app",
+      messagingSenderId: "819480407444",
+      appId: "1:819480407444:web:3012c7d0bd56c907333381",
+      measurementId: "G-YE6ZKLSSZC"
+    };
+    
+    if (!firebase.apps.length) {
+        firebase.initializeApp(firebaseConfig);
+    }
+    db = firebase.firestore(); // 【修正済み】グローバル変数 db に代入
+
+    loadCompanies(); // 初期ロードをFirebase初期化後に実行
+});
+// ★★★ Firebase初期化 終了 ★★★
+
+
+/* --- 一覧取得 (Firestore対応) --- */
+async function loadCompanies() {
+  if (!db) return; // DBが初期化されていない場合は処理しない
+  
+  try {
+    const snapshot = await db.collection("companies").get();
+    
+    // スナップショットを配列に変換。ドキュメントIDをidとして保持。
+    companies = snapshot.docs.map(doc => ({
+      id: doc.id,
+      ...doc.data() // companyName, furigana, url, etc, etc2 が含まれる
+    }));
+    
+    renderTable(companies);
+  } catch (error) {
+    console.error("Firestoreデータ取得エラー:", error);
+    alert("会社データの読み込みに失敗しました。Firebaseの設定とセキュリティルールを確認してください。");
+  }
 }
 
 /* --- テーブル描画 --- */
@@ -228,24 +268,33 @@ function closeModal() {
   document.getElementById("modalOverlay").style.display = "none";
 }
 
-/* --- 追加 --- */
-function addCompany() {
+/* --- 追加 (Firestore対応) --- */
+async function addCompany() {
   const data = getFormValues();
 
   if (!data.companyName) return alert("会社名を入力してください");
 
+  // 重複チェック: 既存のデータリストに対してチェック
   if (companies.some(c => c.companyName === data.companyName))
     return alert("同じ会社名が既に存在します");
 
-  fetch(API_URL, {
-    method: "POST",
-    headers: {"Content-Type": "application/json"},
-    body: JSON.stringify(data)
-  }).then(loadCompanies);
+  try {
+    // Firestoreに追加
+    // measurementIdはデータには不要なので、除外して登録
+    const { measurementId, ...dataToSave } = data;
+    await db.collection("companies").add(dataToSave); 
+    
+    // 追加成功後、フォームをクリアして再ロード
+    clearForm();
+    loadCompanies();
+  } catch (error) {
+    console.error("データ追加エラー:", error);
+    alert("データ追加中にエラーが発生しました。\n\n詳細: " + error.message + "\n\n🚨原因の可能性: Firestoreのセキュリティルールが書き込みを許可していません。");
+  }
 }
 
-/* --- 編集 --- */
-function updateCompany() {
+/* --- 編集 (Firestore対応) --- */
+async function updateCompany() {
   if (!selectedId) return alert("編集する会社を選んでください");
 
   const data = getFormValues();
@@ -254,20 +303,36 @@ function updateCompany() {
       c.companyName === data.companyName && c.id !== selectedId))
     return alert("同じ会社名が既に存在します");
 
-  fetch(`${API_URL}/${selectedId}`, {
-    method: "PUT",
-    headers: {"Content-Type": "application/json"},
-    body: JSON.stringify(data)
-  }).then(loadCompanies);
+  try {
+    // Firestoreを更新
+    const { measurementId, ...dataToSave } = data;
+    await db.collection("companies").doc(selectedId).update(dataToSave);
+    
+    // 更新成功後、フォームをクリアして再ロード
+    clearForm();
+    loadCompanies();
+  } catch (error) {
+    console.error("データ更新エラー:", error);
+    alert("データ更新中にエラーが発生しました。\n\n🚨原因の可能性: Firestoreのセキュリティルールが書き込みを許可していません。");
+  }
 }
 
-/* --- 削除 --- */
-function deleteSelected() {
+/* --- 削除 (Firestore対応) --- */
+async function deleteSelected() {
   if (!selectedId) return alert("削除する会社を選んでください");
   if (!confirm("本当に削除しますか？")) return;
 
-  fetch(`${API_URL}/${selectedId}`, { method: "DELETE" })
-    .then(() => { selectedId = null; loadCompanies(); });
+  try {
+    // Firestoreから削除
+    await db.collection("companies").doc(selectedId).delete();
+    
+    // 削除成功後、フォームをクリアして再ロード
+    clearForm();
+    loadCompanies();
+  } catch (error) {
+    console.error("データ削除エラー:", error);
+    alert("データ削除中にエラーが発生しました。\n\n🚨原因の可能性: Firestoreのセキュリティルールが書き込みを許可していません。");
+  }
 }
 
 /* --- 入力欄から値をまとめる --- */
@@ -281,13 +346,32 @@ function getFormValues() {
   };
 }
 
+/* --- フォームクリア --- */
+function clearForm() {
+  document.getElementById("companyName").value = "";
+  document.getElementById("furigana").value = "";
+  document.getElementById("url").value = "";
+  document.getElementById("etc").value = "";
+  document.getElementById("etc2").value = "";
+  selectedId = null; 
+
+  // ラジオボタンの選択を解除 (念のため)
+  document.querySelectorAll('input[name="select"]').forEach(radio => radio.checked = false);
+}
+
 /* --- 検索 --- */
 function searchCompanies() {
   const key = document.getElementById("searchBox").value.trim();
   if (!key) return renderTable(companies);
 
+  // ふりがなでの検索も可能にするため、小文字化して検索
+  const searchKey = key.toLowerCase();
+  
   renderTable(
-    companies.filter(c => c.companyName.includes(key))
+    companies.filter(c => 
+        (c.companyName && c.companyName.toLowerCase().includes(searchKey)) ||
+        (c.furigana && c.furigana.toLowerCase().includes(searchKey))
+    )
   );
 }
 
@@ -301,8 +385,6 @@ function sortBy(key) {
   renderTable(companies);
 }
 
-/* 初期表示 */
-loadCompanies();
 </script>
 
 </body>
