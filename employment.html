@@ -5,20 +5,20 @@
 <title>就職状況管理 (Firestore版)</title>
 
 <style>
-/* ... (スタイルシートは変更なし) ... */
+/* 既存デザインを完全に維持 */
 body { font-family: sans-serif; margin: 16px; }
 #app { display: none; }
 
 table { border-collapse: collapse; width: 100%; margin-top: 10px; }
-th, td { border: 1px solid #ccc; padding: 8px; }
+th, td { border: 1px solid #ccc; padding: 8px; text-align: center; }
 th { background: #f0f0f0; }
-/* テーブル行がクリック可能であることを示すカーソル */
 #employment-table tr { cursor: pointer; } 
 
 .input-text { font-size: 16px; padding: 4px; width: 300px; margin-bottom: 6px; }
+/* 読み取り専用時のスタイル */
+.input-text[readonly] { background-color: #f0f0f0; color: #555; cursor: not-allowed; }
 .input-date { font-size: 16px; padding: 4px; }
 
-/* ボタンの共通スタイルを調整 */
 .big-button { 
   font-size: 18px; 
   padding: 10px 20px; 
@@ -32,29 +32,24 @@ th { background: #f0f0f0; }
 }
 .delete-button { background:#e74c3c; }
 .manage-button { background: #3498db; }
-/* フィルターボタンの選択時のスタイル */
 .active-filter { background-color: #333 !important; }
 
 #loginBox { max-width: 420px; margin: 80px auto; padding: 24px; border-radius: 10px; box-shadow: 0 6px 18px rgba(0,0,0,0.12); }
 
-/* modal */
+/* 本日の予定用スタイル */
+#todaySchedule {
+    margin: 10px 0;
+    padding: 12px;
+    background: #fffbe6;
+    border: 1px solid #ffe58f;
+    border-radius: 6px;
+    display: none;
+}
+#todaySchedule h3 { margin-top: 0; margin-bottom: 8px; font-size: 17px; color: #856404; border-bottom: 1px solid #ffe58f; padding-bottom: 4px; }
+#todayList { font-weight: bold; line-height: 1.6; }
+
 #companyModal { display:none; position:fixed; inset:0; background:rgba(0,0,0,0.4); }
 #companyModal .inner { background:#fff; max-width:600px; margin:80px auto; padding:16px; border-radius:8px; }
-
-/* 履歴リストのスタイル */
-#historyList ul {
-    list-style-type: none;
-    padding-left: 0;
-    margin: 0;
-}
-#historyList li {
-    padding: 4px 8px;
-    border-bottom: 1px dotted #ccc;
-    font-size: 0.9em;
-}
-#historyList li:last-child {
-    border-bottom: none;
-}
 </style>
 </head>
 <body>
@@ -77,78 +72,63 @@ th { background: #f0f0f0; }
 <h1>就職状況管理</h1>
 <p id="welcomeMessage" style="margin-top: 0; font-size: 1.1em; font-weight: bold;"></p>
 
+<div id="todaySchedule">
+    <h3>📅 本日の予定</h3>
+    <div id="todayList"></div>
+</div>
+
 <div>
   <input id="searchBox" class="input-text" placeholder="学籍番号で検索">
   <button id="searchButton" class="big-button" onclick="searchEmployment()">検索</button>
   <button class="big-button" onclick="clearAll()">クリア</button>
-  <button id="companyManageButton" class="big-button manage-button" onclick="openCompanyManager()" style="display: none;">会社登録</button>
+  <button id="companyManageButton" class="big-button manage-button" onclick="openCompanyManager()">会社登録</button>
 </div>
 
 <hr>
 <div id="editSection" style="display:none;">
     <h3>登録 / 編集</h3>
-
-    生徒<br>
-    <input id="student" class="input-text"><br>
-
-    会社名<br>
-    <input id="companyName" class="input-text" readonly>
+    生徒（学籍番号）<br><input id="student" class="input-text"><br>
+    会社名<br><input id="companyName" class="input-text" readonly>
     <button class="big-button" onclick="openCompanyModal()">選択</button><br>
-
     状況<br>
     <select id="statusSelect" class="input-text">
       <option>説明会</option>
       <option>書類選考応募</option>
+      <option>カジュアル面談</option>
       <option>１次面接予定</option>
       <option>２次面接予定</option>
       <option>最終面接予定</option>
       <option>内々定</option>
-      <option>内定</option>
+      <option>内定承諾</option>
       <option>不採用</option>
     </select><br>
-
-    日付<br>
-    <input type="date" id="date" class="input-date"><br><br>
-
+    日付<br><input type="date" id="date" class="input-date"><br><br>
     <button class="big-button" onclick="addEmployment()">追加</button>
     <button class="big-button" onclick="updateEmployment()">編集</button>
     <button id="deleteButton" class="big-button delete-button" onclick="deleteEmployment()">削除</button>
-
-    <div id="historyContainer" style="margin-top: 15px; border-top: 1px solid #ccc; padding-top: 10px; display: none;">
-        <h4>ステータス履歴 
-            <span id="historyToggle" style="cursor: pointer; color: blue; font-size: 0.8em;">(表示/非表示)</span>
-        </h4>
-        <div id="historyList" style="max-height: 200px; overflow-y: auto; border: 1px solid #eee; padding: 5px; display: none;">
-            </div>
-    </div>
 </div>
 <hr id="editSectionHr" style="display:none;">
 
-
-<button class="big-button manage-button" onclick="toggleBackupRestore()">バックアップ / リストア (トグル)</button>
-
 <div id="backupRestoreContainer" style="display: none;">
-    <div id="backupRestoreSection" style="margin-top: 10px; margin-bottom: 20px; display: none;">
+    <button class="big-button manage-button" onclick="toggleBackupRestoreInner()">バックアップ / リストア (トグル)</button>
+    <div id="backupRestoreSection" style="margin-top: 10px; margin-bottom: 20px; border: 1px solid #ccc; padding: 10px; display: none;">
         <h3>📊 バックアップ / リストア</h3>
-        <button class="big-button manage-button" onclick="backupData()">バックアップ (JSONダウンロード)</button>
+        <button class="big-button manage-button" onclick="backupData()">バックアップ保存</button>
         <input type="file" id="restoreFile" accept=".json" style="margin-left: 10px;">
-        <button class="big-button delete-button" onclick="restoreData()">リストア (上書き)</button>
-        <br>
+        <button class="big-button delete-button" onclick="restoreData()">リストア実行</button>
         <button class="big-button delete-button" onclick="manualDeleteAll()" style="margin-top: 10px;">🚨 全データ強制削除</button>
-        <p style="font-size: 0.8em; color: gray; margin-top: 5px;">※リストア機能は、現在のデータをすべて消去してからファイルの内容に置き換えます。大量データ削除の際に失敗することがあるため、**二重登録を防ぐには、リストア前に「全データ強制削除」を実行**してください。</p>
     </div>
-    <hr id="backupRestoreHr" style="display: none;">
+    <hr>
 </div>
-<button class="big-button" onclick="showAddForm()">新規追加</button>
 
+<button class="big-button" onclick="showAddForm()">新規追加</button>
 <hr>
-<div id="classFilterContainer" style="margin-bottom: 15px;">
-  </div>
+<div id="classFilterContainer" style="margin-bottom: 15px;"></div>
 <hr>
 
 <table>
 <thead>
-<tr><th>学籍番号</th><th>名前</th><th>会社名</th><th>状況</th><th>日付</th></tr>
+<tr><th style="width: 40px;">新</th><th>学籍番号</th><th>名前</th><th>会社名</th><th>状況</th><th>日付</th></tr>
 </thead>
 <tbody id="employment-table"></tbody>
 </table>
@@ -157,821 +137,249 @@ th { background: #f0f0f0; }
 <div id="companyModal">
   <div class="inner">
     <h3>会社選択</h3>
-    <input id="companySearch" class="input-text" placeholder="会社名またはふりがなで検索">
-    <table>
-      <tbody id="companyList"></tbody>
-    </table>
+    <input id="companySearch" class="input-text" placeholder="会社検索">
+    <table><tbody id="companyList"></tbody></table>
     <button class="big-button" onclick="closeCompanyModal()">閉じる</button>
   </div>
 </div>
 
 <script>
-// MockAPIのURLは不要になりました
-// const API_EMP = "https://69391958c8d59937aa067b4c.mockapi.io/employment";
-// const API_COMPANY = "https://69391958c8d59937aa067b4c.mockapi.io/company";
+let employment=[]; let companies=[]; let selectedId=null; let db = null;
+let studentsList = []; let studentsMap = new Map(); let studentClassMap = new Map();
+let classKeys = []; let currentFilterClass = 'ALL'; let statusColors = {};
+window.loginRole = null; window.loginStudentId = null;
 
-let employment=[];
-let companies=[];
-let selectedId=null;
-let db = null; // Firestoreインスタンスを格納
-
-let studentsList = []; 
-let studentsMap = new Map();
-let studentClassMap = new Map();
-let classKeys = [];
-let currentFilterClass = 'ALL'; 
-
-let statusColors = {};
-
-window.loginRole = null; 
-window.loginStudentId = null;
-window.loginStudentName = null;
-
-
-// 履歴処理ヘルパー関数 (変更なし)
-function parseHistory(historyString) {
-    try {
-        const history = JSON.parse(historyString || '[]');
-        return Array.isArray(history) ? history : [];
-    } catch (e) {
-        return [];
-    }
-}
-function stringifyHistory(historyArray) {
-    return JSON.stringify(historyArray);
-}
-function createHistoryEvent(status, date) {
-    // 日付が空の場合は今日の日付を使用
-    const eventDate = date || new Date().toISOString().split('T')[0];
-    return {
-        date: eventDate,
-        status: status
-    };
-}
-
-
-// ★★★ Firebase初期化 ★★★
 document.addEventListener('DOMContentLoaded', async () => {
-    // 【以前のステップで確認した正しいAPI Keyを含むConfig情報を設定】
     const firebaseConfig = {
       apiKey: "AIzaSyDfjLJBbOBcaXxFjkOXU29dCJWwtmbv9tk",
       authDomain: "mockapi-demo.firebaseapp.com",
       projectId: "mockapi-demo",
       storageBucket: "mockapi-demo.firebasestorage.app",
       messagingSenderId: "819480407444",
-      appId: "1:819480407444:web:3012c7d0bd56c907333381",
-      measurementId: "G-YE6ZKLSSZC"
+      appId: "1:819480407444:web:3012c7d0bd56c907333381"
     };
-    
-    if (!firebase.apps.length) {
-        firebase.initializeApp(firebaseConfig);
-    }
+    if (!firebase.apps.length) firebase.initializeApp(firebaseConfig);
     db = firebase.firestore(); 
-
-    // 初期ロードに必要な処理をawaitで確実に実行
-    await loadStudents();
-    await loadStatusColors();
-    loadEmployment();
-    loadCompanies();
+    await loadStudents(); await loadStatusColors(); loadEmployment(); loadCompanies();
 });
-// ★★★ Firebase初期化 終了 ★★★
 
-
-// loadStatusColors, loadStudents, tryLogin などは変更なし
 async function loadStatusColors() {
     try {
         const response = await fetch('status_colors.json');
-        if (!response.ok) throw new Error('Failed to load status_colors.json: ' + response.statusText);
-        statusColors = await response.json();
-    } catch (error) {
-        console.error("Error loading status colors data.", error);
-    }
+        if (response.ok) statusColors = await response.json();
+    } catch (e) {}
 }
 
 async function loadStudents() {
   try {
     const response = await fetch('students.json');
-    if (!response.ok) throw new Error('Failed to load students.json: ' + response.statusText);
-    
-    const studentData = await response.json();
-
-    studentsList = [];
-    studentsMap = new Map();
-    studentClassMap = new Map(); 
-    classKeys = []; 
-
-    for (const classKey in studentData) {
-      if (Array.isArray(studentData[classKey])) {
-        classKeys.push(classKey); 
-        for (const student of studentData[classKey]) {
-            studentsList.push(student.id);
-            studentsMap.set(student.id, student.name); 
-            studentClassMap.set(student.id, classKey); 
-        }
-      }
+    if (!response.ok) return;
+    const data = await response.json();
+    for (const key in data) {
+      classKeys.push(key);
+      data[key].forEach(s => {
+          studentsList.push(s.id);
+          studentsMap.set(s.id, s.name);
+          studentClassMap.set(s.id, key);
+      });
     }
-  } catch (error) {
-    console.error("Error loading students data.", error);
-    document.getElementById("loginErr").textContent = "エラー: 学生データの読み込みに失敗しました。Webサーバー経由でアクセスしているか確認してください。";
-  }
+  } catch (e) {}
 }
 
-function updateUIVisibility() {
-    const isStudent = window.loginRole === "student";
-
-    const searchBox = document.getElementById("searchBox");
-    const searchButton = document.getElementById("searchButton");
-    const deleteButton = document.getElementById("deleteButton");
-    const classFilterContainer = document.getElementById("classFilterContainer"); 
-    const editSection = document.getElementById("editSection");
-    const editSectionHr = document.getElementById("editSectionHr");
-    const historyContainer = document.getElementById("historyContainer"); 
-    const companyManageButton = document.getElementById("companyManageButton");
-    
-    // バックアップ/リストア関連の要素IDを修正
-    const backupRestoreContainer = document.getElementById("backupRestoreContainer");
-    const backupRestoreSection = document.getElementById("backupRestoreSection");
-    const backupRestoreHr = document.getElementById("backupRestoreHr");
-
-
-    if (searchBox) searchBox.style.display = isStudent ? "none" : "";
-    if (searchButton) searchButton.style.display = isStudent ? "none" : "";
-    if (deleteButton) deleteButton.style.display = isStudent ? "none" : "";
-    
-    if (classFilterContainer) classFilterContainer.style.display = isStudent ? "none" : "";
-    
-    // 管理者・学生の両方で表示
-    if (companyManageButton) companyManageButton.style.display = "inline-block"; 
-    
-    if (window.loginRole === "admin") {
-        editSection.style.display = 'none';
-        editSectionHr.style.display = 'none';
-        if (historyContainer) historyContainer.style.display = 'none'; 
-        
-        // 管理者のみコンテナ (トグルボタン) を表示
-        if (backupRestoreContainer) backupRestoreContainer.style.display = 'block'; 
-        
-        // 中身は初期状態として非表示
-        if (backupRestoreSection) backupRestoreSection.style.display = 'none';
-        if (backupRestoreHr) backupRestoreHr.style.display = 'none';
-
-    } else if (window.loginRole === "student") {
-        editSection.style.display = 'block';
-        editSectionHr.style.display = 'block';
-        if (historyContainer) historyContainer.style.display = 'none';
-        
-        // 学生はコンテナ全体を非表示
-        if (backupRestoreContainer) backupRestoreContainer.style.display = 'none';
-    }
-    
-    displayWelcomeMessage();
-}
-
-function showAddForm() {
-    const editSection = document.getElementById("editSection");
-    const editSectionHr = document.getElementById("editSectionHr");
-    const historyContainer = document.getElementById("historyContainer");
-
-    document.getElementById("student").value = (window.loginRole === "student" ? window.loginStudentId : "");
-    document.getElementById("companyName").value = "";
-    document.getElementById("statusSelect").value = "説明会";
-    document.getElementById("date").value = "";
-    selectedId = null; 
-
-    editSection.style.display = 'block';
-    editSectionHr.style.display = 'block';
-    
-    if (window.loginRole === "admin" && historyContainer) {
-        historyContainer.style.display = 'none';
-        document.getElementById("historyList").innerHTML = '';
-    }
-}
-
-function displayWelcomeMessage() {
-    const msgElement = document.getElementById("welcomeMessage");
-    if (window.loginRole === "student" && window.loginStudentName) {
-        msgElement.textContent = `こんにちは ${window.loginStudentName}さん`;
-    } else {
-        msgElement.textContent = ""; 
-    }
-}
-
-
-async function tryLogin(){
-  const loginId = document.getElementById("loginId").value.trim();
-  const pwInput = document.getElementById("pwInput").value.trim();
-  const loginErr = document.getElementById("loginErr");
-
-  if (studentsList.length === 0) {
-      await loadStudents();
-      if (studentsList.length === 0) {
-          return;
-      }
-  }
-  
-  // ★★★ ログインロジック修正開始 ★★★
-  
-  // 1. 管理者としてログインできるのは、IDが 'admin' かつパスワードが 'admin' の場合のみ
-  const isAdminId = loginId.toLowerCase() === "admin";
-  const isAdminPw = pwInput === "admin" || pwInput === "管理者パスワード";
-  
-  if (isAdminId && isAdminPw) {
-      loginErr.textContent = "";
-      loginBox.style.display="none";
-      app.style.display="block";
-      window.loginRole = "admin";
-      window.loginStudentId = loginId;
-      window.loginStudentName = null; 
-      
-      updateUIVisibility();
-      loadEmployment();
-      loadCompanies();
-      return;
-  }
-
-  // 2. 学生としてログイン
-  const isStudentId = studentsList.includes(loginId);
-  const isStudentPwValid = pwInput === ""; 
-  
-  // IDが学生番号であれば、パスワードが何であっても（空か、adminか、その他）学生としてログインさせる
-  if (isStudentId) {
-      loginErr.textContent = "";
-      loginBox.style.display="none";
-      app.style.display="block";
-      
-      window.loginRole = "student";
-      window.loginStudentId = loginId;
-      window.loginStudentName = studentsMap.get(loginId);
-      
-      updateUIVisibility();
-      loadEmployment();
-      loadCompanies();
-  }
-  else {
-      // どちらにも該当しない場合
-      loginErr.textContent = "学籍番号または管理者ID/パスワードが正しくありません。";
-      document.getElementById("pwInput").value = "";
-  }
-  // ★★★ ログインロジック修正終了 ★★★
-}
-
-function openCompanyManager() {
-    window.open('company.html', '_blank');
-}
-
-
-// ↓↓↓ 新しいトグル関数を追加 ↓↓↓
-function toggleBackupRestore() {
-    if (window.loginRole !== "admin") return; 
-    
-    const section = document.getElementById("backupRestoreSection");
-    const hr = document.getElementById("backupRestoreHr");
-
-    if (section.style.display === 'none') {
-        section.style.display = 'block';
-        hr.style.display = 'block';
-    } else {
-        section.style.display = 'none';
-        hr.style.display = 'none';
-    }
-}
-// ↑↑↑ 新しいトグル関数を追加 ↑↑↑
-
-
-// ★★★ Firestore対応: loadEmployment (Read) ★★★
 async function loadEmployment() {
-  if (!db) return;
+  const snapshot = await db.collection("employment").get();
+  const allData = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+  employment = (window.loginRole === "student") ? allData.filter(e => e.student === window.loginStudentId) : allData;
+  employment.sort((a, b) => a.student.localeCompare(b.student));
   
-  try {
-    const snapshot = await db.collection("employment").get();
-    
-    // スナップショットを配列に変換。ドキュメントIDをidとして保持。
-    const allData = snapshot.docs.map(doc => ({
-        id: doc.id, 
-        ...doc.data()
-    }));
-    
-    employment = (window.loginRole === "student")
-      ? allData.filter(e => e.student === window.loginStudentId)
-      : allData; 
-    
-    // 学籍番号順ソート
-    employment.sort((a, b) => a.student.localeCompare(b.student));
-    
-    if (window.loginRole === "admin") {
-        currentFilterClass = 'ALL'; 
-        renderClassFilters(); 
-        renderTable(employment);
-        document.getElementById("editSection").style.display = 'none';
-        document.getElementById("editSectionHr").style.display = 'none';
-
-    } else {
-        renderTable(employment);
-    }
-
-    if (window.loginRole === "student") {
-        document.getElementById("student").value = window.loginStudentId;
-        document.getElementById("student").readOnly = true;
-    } else {
-        document.getElementById("student").readOnly = false;
-    }
-  } catch (error) {
-      console.error("Firestoreデータ取得エラー (employment):", error);
-      alert("就職状況データの読み込みに失敗しました。Firebaseの設定とセキュリティルールを確認してください。");
+  if (window.loginRole === "admin") {
+      renderClassFilters();
+      updateTodaySchedule();
   }
+  renderTable(employment);
 }
 
+function updateTodaySchedule() {
+    const container = document.getElementById("todaySchedule");
+    const listDiv = document.getElementById("todayList");
+    if (window.loginRole !== "admin") {
+        container.style.display = "none";
+        return;
+    }
+    const todayStr = new Date().toLocaleDateString('sv-SE');
+    const todays = employment.filter(e => e.date === todayStr);
+
+    if (todays.length > 0) {
+        container.style.display = "block";
+        listDiv.innerHTML = todays.map(e => `<div>・${studentsMap.get(e.student)||"不明"}　${e.status}（${e.companyName}）</div>`).join("");
+    } else {
+        container.style.display = "none";
+    }
+}
 
 function renderTable(list){
-  const tb=document.getElementById("employment-table");
-  tb.innerHTML="";
+  const tb=document.getElementById("employment-table"); tb.innerHTML="";
+  const now = new Date();
   list.forEach(e=>{
-    const tr=document.createElement("tr");
-    tr.onclick=()=>selectRow(e.id);
-    
-    const studentName = studentsMap.get(e.student) || "不明"; 
-    
-    tr.innerHTML=`<td>${e.student}</td><td>${studentName}</td><td>${e.companyName}</td><td>${e.status}</td><td>${e.date||""}</td>`;
-
-    const colorInfo = statusColors[e.status];
-    if (colorInfo) {
-        tr.style.backgroundColor = colorInfo.background;
-        tr.style.color = colorInfo.text;
+    const tr=document.createElement("tr"); tr.onclick=()=>selectRow(e.id);
+    let mark = "";
+    if (e.updatedAt && e.updatedAt.toDate) {
+        if ((now - e.updatedAt.toDate()) / 3600000 <= 120) mark = "★";
     }
-
+    tr.innerHTML=`<td style="color:gold;font-weight:bold;">${mark}</td><td>${e.student}</td><td>${studentsMap.get(e.student)||"?"}</td><td>${e.companyName}</td><td>${e.status}</td><td>${e.date||""}</td>`;
+    if (statusColors[e.status]) {
+        tr.style.backgroundColor = statusColors[e.status].background;
+        tr.style.color = statusColors[e.status].text;
+    }
     tb.appendChild(tr);
   });
 }
 
-function renderHistory(historyString) {
-    const historyListContainer = document.getElementById("historyList");
-    const historyContainer = document.getElementById("historyContainer");
-    
-    if (window.loginRole !== "admin") {
-        historyContainer.style.display = 'none';
-        return;
-    }
+async function tryLogin(){
+  const id = document.getElementById("loginId").value.trim();
+  const pw = document.getElementById("pwInput").value.trim();
+  if (id.toLowerCase() === "admin" && (pw === "admin" || pw === "管理者パスワード")) {
+    window.loginRole = "admin";
+  } else if (studentsList.includes(id)) {
+    window.loginRole = "student"; window.loginStudentId = id;
+  } else { return alert("ログイン失敗"); }
+  
+  document.getElementById("loginBox").style.display="none";
+  document.getElementById("app").style.display="block";
+  
+  const isAdmin = (window.loginRole === "admin");
+  const isStudent = (window.loginRole === "student");
 
-    historyContainer.style.display = 'block';
-    historyListContainer.innerHTML = '';
-    
-    const historyArray = parseHistory(historyString);
-    
-    // 日付の新しい順にソート
-    historyArray.sort((a, b) => new Date(b.date) - new Date(a.date));
-
-    if (historyArray.length === 0) {
-        historyListContainer.innerHTML = '<p style="margin: 5px;">履歴なし</p>';
-        return;
-    }
-
-    const ul = document.createElement('ul');
-    
-    historyArray.forEach(item => {
-        const li = document.createElement('li');
-        li.textContent = `[${item.date}] ${item.status}`;
-        ul.appendChild(li);
-    });
-
-    historyListContainer.appendChild(ul);
-    // 履歴リストは最初は非表示
-    historyListContainer.style.display = 'none'; 
+  document.getElementById("companyManageButton").style.display = (isAdmin || isStudent) ? "inline-block" : "none";
+  document.getElementById("backupRestoreContainer").style.display = isAdmin ? "block" : "none";
+  document.getElementById("searchBox").style.display = isAdmin ? "inline-block" : "none";
+  document.getElementById("searchButton").style.display = isAdmin ? "inline-block" : "none";
+  document.getElementById("classFilterContainer").style.display = isAdmin ? "block" : "none";
+  
+  document.getElementById("student").readOnly = isStudent;
+  document.getElementById("welcomeMessage").textContent = isAdmin ? "管理者モード" : `こんにちは ${studentsMap.get(id)}さん`;
+  
+  loadEmployment(); loadCompanies();
 }
 
 function selectRow(id){
-  selectedId=id;
-  const e=employment.find(x=>x.id===id);
-  
+  selectedId=id; const e=employment.find(x=>x.id===id);
   document.getElementById("student").value=e.student;
   document.getElementById("companyName").value=e.companyName;
   document.getElementById("statusSelect").value=e.status;
   document.getElementById("date").value=e.date||"";
-
-  if (window.loginRole === "admin") {
-      renderHistory(e.history);
-  }
-  
-  if (window.loginRole === "admin" || window.loginRole === "student") {
-      document.getElementById("editSection").style.display = 'block';
-      document.getElementById("editSectionHr").style.display = 'block';
-  }
+  document.getElementById("editSection").style.display = 'block';
+  document.getElementById("editSectionHr").style.display = 'block';
 }
 
-
-function renderClassFilters() {
-    const container = document.getElementById("classFilterContainer");
-    if (!container || window.loginRole !== "admin") return;
-    
-    container.innerHTML = "";
-    
-    const allButton = document.createElement("button");
-    allButton.textContent = "ALL";
-    allButton.className = "big-button";
-    if (currentFilterClass === 'ALL') {
-        allButton.classList.add('active-filter');
-    }
-    allButton.onclick = () => filterByClass('ALL');
-    container.appendChild(allButton);
-
-    classKeys.forEach(key => {
-        const button = document.createElement("button");
-        button.textContent = key;
-        button.className = "big-button";
-        if (currentFilterClass === key) {
-             button.classList.add('active-filter');
-        }
-        button.onclick = () => filterByClass(key);
-        container.appendChild(button);
-    });
-}
-
-function filterByClass(classKey) {
-    if (window.loginRole !== "admin") return;
-
-    currentFilterClass = classKey;
-    renderClassFilters(); 
-    
-    document.getElementById("editSection").style.display = 'none';
-    document.getElementById("editSectionHr").style.display = 'none';
-    selectedId = null; 
-
-    let filteredEmployment = employment;
-
-    if (classKey !== 'ALL') {
-        const studentIdsInClass = Array.from(studentClassMap.entries())
-            .filter(([id, cls]) => cls === classKey)
-            .map(([id, cls]) => id);
-
-        filteredEmployment = employment.filter(e => studentIdsInClass.includes(e.student));
-    }
-
-    renderTable(filteredEmployment);
-}
-
-
-// ★★★ Firestore対応: loadCompanies (Read) ★★★
-async function loadCompanies(){
-  if (!db) return;
-  try {
-    const snapshot = await db.collection("companies").get();
-    const data = snapshot.docs.map(doc => ({
-        id: doc.id,
-        ...doc.data()
-    }));
-    companies = data; 
-    renderCompanyList(data);
-  } catch (error) {
-    console.error("Firestoreデータ取得エラー (companies):", error);
-  }
-}
-
-
-// ★★★ Firestore対応: addEmployment (Create) ★★★
 async function addEmployment(){
-  const studentId = student.value;
-  const company = companyName.value;
-
-  if (window.loginRole === "student" && studentId !== window.loginStudentId) {
-      alert("学生は自分の就職状況のみを追加・編集できます。");
-      return;
-  }
-
-  const isDuplicate = employment.some(e => 
-      e.student === studentId && e.companyName === company
-  );
-  
-  if (isDuplicate) {
-      alert(`エラー: 学籍番号 ${studentId} は既に「${company}」の就職状況を登録しています。\n\n編集する場合は、リストから既存の項目を選択してください。`);
-      return; 
-  }
-  
-  const newStatus = statusSelect.value;
-  const newDate = date.value;
-  
-  const initialHistory = [createHistoryEvent(newStatus, newDate)];
-  const historyString = stringifyHistory(initialHistory);
-  
-  // Firestoreに追加
-  try {
-    await db.collection("employment").add({
-      student:studentId,
-      companyName:company,
-      status:newStatus,
-      date:newDate,
-      history: historyString // 履歴を追加
-    });
-    
-    // 成功後、再ロード
-    loadEmployment();
-  } catch (error) {
-    console.error("データ追加エラー:", error);
-    alert("データ追加中にエラーが発生しました。Firestoreのセキュリティルールを確認してください。");
-  }
+  const s = document.getElementById("student").value;
+  const c = document.getElementById("companyName").value;
+  if(!s || !c) return alert("入力してください");
+  await db.collection("employment").add({
+    student:s, companyName:c, status:document.getElementById("statusSelect").value,
+    date:document.getElementById("date").value, updatedAt: firebase.firestore.FieldValue.serverTimestamp()
+  });
+  loadEmployment(); clearAll();
 }
 
-// ★★★ Firestore対応: updateEmployment (Update) ★★★
 async function updateEmployment(){
-  if(!selectedId)return;
-  if (window.loginRole === "student" && student.value !== window.loginStudentId) {
-      alert("学生は自分の就職状況のみを追加・編集できます。");
-      return;
-  }
-  
-  const newStatus = statusSelect.value;
-  const newDate = date.value;
-  
-  const existingRecord = employment.find(x => x.id === selectedId);
-  if (!existingRecord) return;
-  
-  let historyArray = parseHistory(existingRecord.history);
-  
-  const newHistoryEvent = createHistoryEvent(newStatus, newDate);
-  
-  const latestHistory = historyArray.length > 0 ? historyArray[historyArray.length - 1] : null;
-
-  if (!latestHistory || latestHistory.status !== newStatus || latestHistory.date !== newDate) {
-      historyArray.push(newHistoryEvent);
-  } else {
-      console.log("Status/Date not changed. History not updated.");
-  }
-  
-  // Firestoreを更新
-  try {
-    await db.collection("employment").doc(selectedId).update({
-      student:student.value,
-      companyName:companyName.value,
-      status:newStatus,
-      date:newDate,
-      history: stringifyHistory(historyArray) // 履歴を更新
-    });
-    
-    // 成功後、再ロード
-    loadEmployment();
-  } catch (error) {
-    console.error("データ更新エラー:", error);
-    alert("データ更新中にエラーが発生しました。Firestoreのセキュリティルールを確認してください。");
-  }
+  if(!selectedId) return;
+  await db.collection("employment").doc(selectedId).update({
+    student: document.getElementById("student").value, companyName: document.getElementById("companyName").value,
+    status: document.getElementById("statusSelect").value, date: document.getElementById("date").value,
+    updatedAt: firebase.firestore.FieldValue.serverTimestamp()
+  });
+  loadEmployment(); clearAll();
 }
 
-// ★★★ Firestore対応: deleteEmployment (Delete) ★★★
 async function deleteEmployment(){
-  if(!selectedId||!confirm("削除しますか？"))return;
-  
-  const e=employment.find(x=>x.id===selectedId);
-  if (window.loginRole === "student" && e.student !== window.loginStudentId) {
-      alert("学生は自分の就職状況のみを削除できます。");
-      return;
-  }
-  
-  // Firestoreから削除
-  try {
-    await db.collection("employment").doc(selectedId).delete();
-    // 成功後、再ロード
-    loadEmployment();
-  } catch (error) {
-    console.error("データ削除エラー:", error);
-    alert("データ削除中にエラーが発生しました。Firestoreのセキュリティルールを確認してください。");
-  }
+  if(!selectedId || !confirm("削除しますか？")) return;
+  await db.collection("employment").doc(selectedId).delete();
+  loadEmployment(); clearAll();
 }
 
-
-function searchEmployment(){
-  const k=searchBox.value.trim();
-  if(!k)return renderTable(employment);
-  
-  let dataToSearch;
-  if (window.loginRole === "admin" && currentFilterClass !== 'ALL') {
-      const studentIdsInClass = Array.from(studentClassMap.entries())
-            .filter(([id, cls]) => cls === currentFilterClass)
-            .map(([id, cls]) => id);
-      dataToSearch = employment.filter(e => studentIdsInClass.includes(e.student));
-  } else {
-      dataToSearch = (window.loginRole === "student") 
-          ? employment.filter(e => e.student === window.loginStudentId)
-          : employment;
-  }
-  
-  renderTable(dataToSearch.filter(e=>e.student.includes(k)));
+function showAddForm() {
+  clearAll();
+  document.getElementById("editSection").style.display = 'block';
+  document.getElementById("editSectionHr").style.display = 'block';
 }
 
 function clearAll(){
-  searchBox.value=""; companyName.value=""; date.value=""; 
+  selectedId = null;
+  document.getElementById("searchBox").value = "";
+  // 学生なら自分の学籍番号を残す、管理者なら空
+  document.getElementById("student").value = (window.loginRole === "student" ? window.loginStudentId : "");
+  document.getElementById("companyName").value = "";
+  document.getElementById("statusSelect").selectedIndex = 0;
+  document.getElementById("date").value = "";
+  
   if (window.loginRole === "admin") {
-      filterByClass('ALL');
-  } else {
       renderTable(employment);
+  } else {
+      renderTable(employment.filter(e => e.student === window.loginStudentId));
   }
 }
 
-function openCompanyModal(){
-  companyModal.style.display="block";
-  renderCompanyList(companies);
+function toggleBackupRestoreInner() {
+    const s = document.getElementById("backupRestoreSection");
+    s.style.display = (s.style.display === 'none') ? 'block' : 'none';
 }
-function closeCompanyModal(){ companyModal.style.display="none"; }
 
-companySearch.oninput=()=>{
-  const k = companySearch.value.trim().toLowerCase();
-  
-  if (!k) {
-    renderCompanyList(companies);
-    return;
-  }
-  
-  const filteredList = companies.filter(c => {
-    const name = c.companyName ? c.companyName.toLowerCase() : '';
-    const furigana = c.furigana ? c.furigana.toLowerCase() : '';
-    
-    return name.includes(k) || furigana.includes(k);
+async function backupData() {
+    const s = await db.collection("employment").get();
+    const data = s.docs.map(doc => {
+        const item = { id: doc.id, ...doc.data() };
+        if (item.updatedAt && item.updatedAt.toDate) item.updatedAt = item.updatedAt.toDate().toISOString();
+        return item;
+    });
+    const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' });
+    const a = document.createElement('a'); a.href = URL.createObjectURL(blob);
+    a.download = `backup_${new Date().toLocaleDateString('sv-SE')}.json`; a.click();
+}
+
+async function restoreData() {
+    const file = document.getElementById('restoreFile').files[0];
+    if (!file || !confirm("リストアしますか？")) return;
+    try {
+        const data = JSON.parse(await file.text());
+        const s = await db.collection("employment").get();
+        for (const d of s.docs) await d.ref.delete();
+        for (const record of data) {
+            const { id, ...dataToPost } = record;
+            if (dataToPost.updatedAt) dataToPost.updatedAt = firebase.firestore.Timestamp.fromDate(new Date(dataToPost.updatedAt));
+            await db.collection("employment").add(dataToPost);
+        }
+        alert("リストア完了"); loadEmployment();
+    } catch(e) { alert("リストア失敗"); }
+}
+
+async function manualDeleteAll() { if (confirm("全消去しますか？")) { const s = await db.collection("employment").get(); for (const d of s.docs) await d.ref.delete(); loadEmployment(); } }
+
+function renderClassFilters() {
+  const con = document.getElementById("classFilterContainer"); con.innerHTML = "";
+  ['ALL', ...classKeys].forEach(k => {
+    const b = document.createElement("button"); b.textContent = k; b.className = "big-button";
+    if (currentFilterClass === k) b.classList.add('active-filter');
+    b.onclick = () => { currentFilterClass = k; renderClassFilters(); renderTable(k === 'ALL' ? employment : employment.filter(e => studentClassMap.get(e.student) === k)); };
+    con.appendChild(b);
   });
-  
-  renderCompanyList(filteredList);
-};
+}
 
-function renderCompanyList(list){
-  const tb=document.getElementById("companyList");
-  tb.innerHTML="";
-  list.forEach(c=>{
-    const tr=document.createElement("tr");
-    tr.innerHTML=`<td>${c.companyName}</td>`;
-    tr.onclick=()=>{ companyName.value=c.companyName; closeCompanyModal(); };
+function openCompanyModal(){ document.getElementById("companyModal").style.display="block"; }
+function closeCompanyModal(){ document.getElementById("companyModal").style.display="none"; }
+async function loadCompanies(){
+  const s = await db.collection("companies").get();
+  companies = s.docs.map(d => ({ id: d.id, ...d.data() }));
+  const tb = document.getElementById("companyList"); tb.innerHTML = "";
+  companies.forEach(c => {
+    const tr = document.createElement("tr"); tr.innerHTML = `<td>${c.companyName}</td>`;
+    tr.onclick = () => { document.getElementById("companyName").value = c.companyName; closeCompanyModal(); };
     tb.appendChild(tr);
   });
 }
-
-document.addEventListener('DOMContentLoaded', () => {
-    const toggle = document.getElementById('historyToggle');
-    if (toggle) {
-        toggle.onclick = () => {
-            const list = document.getElementById('historyList');
-            list.style.display = list.style.display === 'none' ? 'block' : 'none';
-        };
-    }
-});
-
-
-// ★★★ Firestore対応: バックアップ/リストア機能 ★★★
-
-/**
- * JSONオブジェクトをファイルとしてダウンロードさせる
- */
-function downloadJson(data, filename) {
-    const json = JSON.stringify(data, null, 2);
-    const blob = new Blob([json], { type: 'application/json' });
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement('a');
-    a.href = url;
-    a.download = filename;
-    document.body.appendChild(a);
-    a.click();
-    document.body.removeChild(a);
-    URL.revokeObjectURL(url);
-    alert(`バックアップが完了しました: ${filename}`);
-}
-
-/**
- * Firestoreから全データを取得し、JSONファイルとしてダウンロードする (Read)
- */
-async function backupData() {
-    // 権限チェックはリストア/バックアップのメイン機能のみ管理者に限定
-    if (window.loginRole !== "admin" || !confirm("現在のデータをすべて取得し、JSONファイルとしてダウンロードしますか？")) return;
-    if (!db) return;
-    
-    try {
-        const snapshot = await db.collection("employment").get();
-        // FirestoreのデータにIDを含めてMockAPI形式に変換
-        const data = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() })); 
-        
-        const timestamp = new Date().toISOString().slice(0, 19).replace(/[:T-]/g, '');
-        const filename = `employment_backup_${timestamp}.json`;
-        
-        downloadJson(data, filename);
-    } catch (error) {
-        alert("バックアップ中にエラーが発生しました: " + error.message);
-    }
-}
-
-/**
- * Firestoreの全データをDELETEする（全件取得し、順次DELETEリクエストを実行） (Delete)
- */
-async function deleteAllEmployment() {
-    console.log("既存データ削除を開始します...");
-    
-    if (!db) return { total: 0, success: 0, fail: 0 };
-
-    const snapshot = await db.collection("employment").get();
-    const existingRecords = snapshot.docs;
-    
-    if (existingRecords.length === 0) {
-        console.log("削除対象の既存データはありません。");
-        return { total: 0, success: 0, fail: 0 };
-    }
-
-    let successCount = 0;
-    let failCount = 0;
-
-    for (const doc of existingRecords) {
-        try {
-            await db.collection("employment").doc(doc.id).delete();
-            successCount++;
-        } catch (error) {
-            failCount++;
-            console.error(`削除中にエラーが発生: ID ${doc.id}, エラー: ${error.message}`);
-        }
-    }
-    
-    console.log(`既存データ削除完了。合計: ${existingRecords.length}件, 成功: ${successCount}件, 失敗: ${failCount}件`);
-    
-    return { 
-        total: existingRecords.length, 
-        success: successCount, 
-        fail: failCount 
-    };
-}
-
-/**
- * 管理者向け：全データ強制削除を実行する (Delete)
- */
-async function manualDeleteAll() {
-    if (window.loginRole !== "admin" || !confirm("【最終確認】Firestore上の就職状況データをすべて強制的に削除します。\n\nこの操作は元に戻せません。本当に実行しますか？")) return;
-
-    const result = await deleteAllEmployment();
-    
-    if (result.fail > 0) {
-        alert(`削除が完了しましたが、${result.fail}件のデータの削除に失敗した可能性があります。ブラウザをリロードしてデータが消えているか確認してください。`);
-    } else {
-        alert(`既存データ ${result.total}件 の削除がすべて完了しました。`);
-    }
-    loadEmployment();
-}
-
-/**
- * リストア処理: 既存データを削除後、ファイルの内容を一括登録する (Delete/Create)
- */
-async function restoreData() {
-    if (window.loginRole !== "admin") return;
-    if (!db) return;
-
-    if (!confirm("【警告】現在のFirestore上の全データを削除し、選択したファイルの内容で上書きリストアします。実行しますか？")) return;
-    
-    const fileInput = document.getElementById('restoreFile');
-    const file = fileInput.files[0];
-    
-    if (!file) {
-        alert("リストアするJSONファイルを選択してください。");
-        return;
-    }
-
-    try {
-        const fileContent = await file.text();
-        const restoreDataArray = JSON.parse(fileContent);
-
-        if (!Array.isArray(restoreDataArray)) {
-            alert("ファイルの内容が配列形式のJSONではありません。");
-            return;
-        }
-
-        // 1. 既存データの削除
-        const deleteResult = await deleteAllEmployment();
-        if (deleteResult.fail > 0) {
-            if (!confirm(`警告: 既存データの削除時に ${deleteResult.fail} 件の失敗がありました。\nこのままリストアを続行すると、データが残る可能性があります。\n\n続行しますか？`)) {
-                return;
-            }
-        }
-        
-        // 2. 新データの登録
-        let postSuccessCount = 0;
-        let postFailCount = 0;
-
-        for (const record of restoreDataArray) {
-            // MockAPIのIDはFirestoreでは自動生成されるため不要
-            const { id, ...dataToPost } = record; 
-            
-            try {
-                // Firestoreにadd()で登録
-                await db.collection("employment").add(dataToPost);
-                postSuccessCount++;
-            } catch (e) {
-                postFailCount++;
-                console.error("リストアPOST失敗:", e);
-            }
-        }
-
-        let alertMessage = `リストアが完了しました。\n新規データ登録 成功: ${postSuccessCount}件 / 失敗: ${postFailCount}件`;
-        if (deleteResult.fail > 0) {
-             alertMessage += `\n\n【注意】既存データの削除失敗が ${deleteResult.fail} 件あったため、データが残っている可能性があります。`;
-        }
-        alert(alertMessage);
-        
-        loadEmployment(); 
-        
-    } catch (error) {
-        alert("リストア中にエラーが発生しました。ファイル形式を確認してください: " + error.message);
-    }
-}
-
-// ★★★ バックアップ/リストア機能 終了 ★★★
-
-// loadStudents, loadStatusColors は DOMContentLoaded 内で実行されます
+function searchEmployment(){ const k = document.getElementById("searchBox").value.trim(); renderTable(!k ? employment : employment.filter(e => e.student.includes(k))); }
+function openCompanyManager() { window.open('company.html', '_blank'); }
 </script>
 </body>
 </html>

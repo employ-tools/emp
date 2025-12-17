@@ -7,6 +7,10 @@
     "background": "#6cc070",
     "text": "#000000"
   },
+  "内定承諾": {
+    "background": "#ffff00",
+    "text": "#000000"
+  },
   "不採用": {
     "background": "#555555",
     "text": "#ffffff"
