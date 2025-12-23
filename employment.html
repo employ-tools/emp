@@ -3,53 +3,31 @@
 <head>
 <meta charset="UTF-8">
 <title>就職状況管理 (Firestore版)</title>
-
 <style>
-/* 既存デザインを完全に維持 */
+/* デザインを完全に維持 */
 body { font-family: sans-serif; margin: 16px; }
 #app { display: none; }
-
 table { border-collapse: collapse; width: 100%; margin-top: 10px; }
 th, td { border: 1px solid #ccc; padding: 8px; text-align: center; }
 th { background: #f0f0f0; }
 #employment-table tr { cursor: pointer; } 
-
 .input-text { font-size: 16px; padding: 4px; width: 300px; margin-bottom: 6px; }
-/* 読み取り専用時のスタイル */
 .input-text[readonly] { background-color: #f0f0f0; color: #555; cursor: not-allowed; }
 .input-date { font-size: 16px; padding: 4px; }
-
-.big-button { 
-  font-size: 18px; 
-  padding: 10px 20px; 
-  margin-right: 10px; 
-  border-radius: 6px; 
-  border: none; 
-  cursor: pointer; 
-  background:#4CAF50; 
-  color:#fff; 
-  margin-bottom: 5px; 
-}
+.big-button { font-size: 18px; padding: 10px 20px; margin-right: 10px; border-radius: 6px; border: none; cursor: pointer; background:#4CAF50; color:#fff; margin-bottom: 5px; }
 .delete-button { background:#e74c3c; }
 .manage-button { background: #3498db; }
 .active-filter { background-color: #333 !important; }
-
 #loginBox { max-width: 420px; margin: 80px auto; padding: 24px; border-radius: 10px; box-shadow: 0 6px 18px rgba(0,0,0,0.12); }
-
-/* 本日の予定用スタイル */
-#todaySchedule {
-    margin: 10px 0;
-    padding: 12px;
-    background: #fffbe6;
-    border: 1px solid #ffe58f;
-    border-radius: 6px;
-    display: none;
-}
+#todaySchedule { margin: 10px 0; padding: 12px; background: #fffbe6; border: 1px solid #ffe58f; border-radius: 6px; display: none; }
 #todaySchedule h3 { margin-top: 0; margin-bottom: 8px; font-size: 17px; color: #856404; border-bottom: 1px solid #ffe58f; padding-bottom: 4px; }
 #todayList { font-weight: bold; line-height: 1.6; }
-
 #companyModal { display:none; position:fixed; inset:0; background:rgba(0,0,0,0.4); }
 #companyModal .inner { background:#fff; max-width:600px; margin:80px auto; padding:16px; border-radius:8px; }
+/* 履歴リスト */
+#historyList ul { list-style-type: none; padding-left: 0; margin: 0; }
+#historyList li { padding: 4px 8px; border-bottom: 1px dotted #ccc; font-size: 0.9em; }
+#historyList li:last-child { border-bottom: none; }
 </style>
 </head>
 <body>
@@ -60,8 +38,8 @@ th { background: #f0f0f0; }
 <div id="loginBox">
   <h2>ログイン</h2>
   <form onsubmit="tryLogin();return false;">
-    <input id="loginId" class="input-text" placeholder="学籍番号 / 管理者ID">
-    <input id="pwInput" type="password" class="input-text" placeholder="管理者パスワード">
+    <input id="loginId" class="input-text" placeholder="学籍番号 / ログインID">
+    <input id="pwInput" type="password" class="input-text" placeholder="パスワード">
     <br>
     <button class="big-button" type="submit">ログイン</button>
   </form>
@@ -88,24 +66,33 @@ th { background: #f0f0f0; }
 <div id="editSection" style="display:none;">
     <h3>登録 / 編集</h3>
     生徒（学籍番号）<br><input id="student" class="input-text"><br>
-    会社名<br><input id="companyName" class="input-text" readonly>
-    <button class="big-button" onclick="openCompanyModal()">選択</button><br>
-    状況<br>
-    <select id="statusSelect" class="input-text">
-      <option>説明会</option>
-      <option>書類選考応募</option>
-      <option>カジュアル面談</option>
-      <option>１次面接予定</option>
-      <option>２次面接予定</option>
-      <option>最終面接予定</option>
-      <option>内々定</option>
-      <option>内定承諾</option>
-      <option>不採用</option>
-    </select><br>
-    日付<br><input type="date" id="date" class="input-date"><br><br>
+    
+    <div style="display:flex; flex-wrap:wrap; gap:10px; align-items:flex-end; margin-bottom:6px;">
+      <div>
+        会社名<br><input id="companyName" class="input-text" style="width:200px;" readonly>
+        <button class="big-button" onclick="openCompanyModal()" style="padding:5px 10px; font-size:14px; margin:0;">選択</button>
+      </div>
+      <div>
+        状況<br>
+        <select id="statusSelect" class="input-text" style="width:160px;">
+          <option>説明会</option><option>書類選考応募</option><option>カジュアル面談</option>
+          <option>１次面接</option><option>２次面接</option><option>最終面接</option>
+          <option>内々定</option><option>内定承諾</option><option>不採用</option><option>辞退</option>
+        </select>
+      </div>
+      <div>
+        日付<br><input type="date" id="date" class="input-date">
+      </div>
+    </div>
+
+    備考<br><textarea id="note" class="input-text" style="height:60px; width:100%; max-width:600px;"></textarea><br><br>
     <button class="big-button" onclick="addEmployment()">追加</button>
     <button class="big-button" onclick="updateEmployment()">編集</button>
     <button id="deleteButton" class="big-button delete-button" onclick="deleteEmployment()">削除</button>
+    <div id="historyContainer" style="margin-top: 15px; border-top: 1px solid #ccc; padding-top: 10px; display: none;">
+        <h4>ステータス履歴 <span id="historyToggle" style="cursor: pointer; color: blue; font-size: 0.8em;">(表示/非表示)</span></h4>
+        <div id="historyList" style="max-height: 200px; overflow-y: auto; border: 1px solid #eee; padding: 5px; display: none;"></div>
+    </div>
 </div>
 <hr id="editSectionHr" style="display:none;">
 
@@ -116,6 +103,7 @@ th { background: #f0f0f0; }
         <button class="big-button manage-button" onclick="backupData()">バックアップ保存</button>
         <input type="file" id="restoreFile" accept=".json" style="margin-left: 10px;">
         <button class="big-button delete-button" onclick="restoreData()">リストア実行</button>
+        <br>
         <button class="big-button delete-button" onclick="manualDeleteAll()" style="margin-top: 10px;">🚨 全データ強制削除</button>
     </div>
     <hr>
@@ -144,240 +132,129 @@ th { background: #f0f0f0; }
 </div>
 
 <script>
+async function getHash(m) {
+  const d = new TextEncoder().encode(m);
+  const b = await crypto.subtle.digest('SHA-256', d);
+  return Array.from(new Uint8Array(b)).map(x => x.toString(16).padStart(2, '0')).join('');
+}
+
 let employment=[]; let companies=[]; let selectedId=null; let db = null;
 let studentsList = []; let studentsMap = new Map(); let studentClassMap = new Map();
 let classKeys = []; let currentFilterClass = 'ALL'; let statusColors = {};
 window.loginRole = null; window.loginStudentId = null;
 
+// --- Config ---
+const _c1 = "QUl6YVN5RGZKTEpCYk9CYWNYeEZqa09YVTI5ZCJKV3d0bWJ2OXRr";
+const _c2 = "bW9ja2FwaS1kZW1vLmZpcmViYXNlYXBwLmNvbQ==";
+const _c3 = "bW9ja2FwaS1kZW1v";
+const _c4 = "bW9ja2FwaS1kZW1vLmZpcmViYXNlc3RvcmFnZS5hcHA=";
+const _c5 = "ODE5NDgwNDA3NDQ0";
+const _c6 = "MTo4MTk0ODA0MDc0NDQ6d2ViOjMwMTJjN2QwYmQ1NmM5MDczMzMzMzgx";
+
 document.addEventListener('DOMContentLoaded', async () => {
+  try {
     const firebaseConfig = {
-      apiKey: "AIzaSyDfjLJBbOBcaXxFjkOXU29dCJWwtmbv9tk",
-      authDomain: "mockapi-demo.firebaseapp.com",
-      projectId: "mockapi-demo",
-      storageBucket: "mockapi-demo.firebasestorage.app",
-      messagingSenderId: "819480407444",
-      appId: "1:819480407444:web:3012c7d0bd56c907333381"
+      apiKey: atob(_c1),
+      authDomain: atob(_c2),
+      projectId: atob(_c3),
+      storageBucket: atob(_c4),
+      messagingSenderId: atob(_c5),
+      appId: atob(_c6)
     };
     if (!firebase.apps.length) firebase.initializeApp(firebaseConfig);
-    db = firebase.firestore(); 
+    db = firebase.firestore();
     await loadStudents(); await loadStatusColors(); loadEmployment(); loadCompanies();
+  } catch (e) {
+    console.error("Connection error");
+  }
 });
 
-async function loadStatusColors() {
-    try {
-        const response = await fetch('status_colors.json');
-        if (response.ok) statusColors = await response.json();
-    } catch (e) {}
-}
-
-async function loadStudents() {
-  try {
-    const response = await fetch('students.json');
-    if (!response.ok) return;
-    const data = await response.json();
-    for (const key in data) {
-      classKeys.push(key);
-      data[key].forEach(s => {
-          studentsList.push(s.id);
-          studentsMap.set(s.id, s.name);
-          studentClassMap.set(s.id, key);
-      });
-    }
-  } catch (e) {}
-}
-
-async function loadEmployment() {
-  const snapshot = await db.collection("employment").get();
-  const allData = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
-  employment = (window.loginRole === "student") ? allData.filter(e => e.student === window.loginStudentId) : allData;
-  employment.sort((a, b) => a.student.localeCompare(b.student));
-  
-  if (window.loginRole === "admin") {
-      renderClassFilters();
-      updateTodaySchedule();
-  }
-  renderTable(employment);
-}
-
-function updateTodaySchedule() {
-    const container = document.getElementById("todaySchedule");
-    const listDiv = document.getElementById("todayList");
-    if (window.loginRole !== "admin") {
-        container.style.display = "none";
-        return;
-    }
-    const todayStr = new Date().toLocaleDateString('sv-SE');
-    const todays = employment.filter(e => e.date === todayStr);
-
-    if (todays.length > 0) {
-        container.style.display = "block";
-        listDiv.innerHTML = todays.map(e => `<div>・${studentsMap.get(e.student)||"不明"}　${e.status}（${e.companyName}）</div>`).join("");
-    } else {
-        container.style.display = "none";
-    }
-}
-
-function renderTable(list){
-  const tb=document.getElementById("employment-table"); tb.innerHTML="";
-  const now = new Date();
-  list.forEach(e=>{
-    const tr=document.createElement("tr"); tr.onclick=()=>selectRow(e.id);
-    let mark = "";
-    if (e.updatedAt && e.updatedAt.toDate) {
-        if ((now - e.updatedAt.toDate()) / 3600000 <= 120) mark = "★";
-    }
-    tr.innerHTML=`<td style="color:gold;font-weight:bold;">${mark}</td><td>${e.student}</td><td>${studentsMap.get(e.student)||"?"}</td><td>${e.companyName}</td><td>${e.status}</td><td>${e.date||""}</td>`;
-    if (statusColors[e.status]) {
-        tr.style.backgroundColor = statusColors[e.status].background;
-        tr.style.color = statusColors[e.status].text;
-    }
-    tb.appendChild(tr);
-  });
-}
+// --- Auth ---
+const _k1 = "8c6976e5b5410415bde908bd4dee15dfb167a9c873fc4bb8a81f6f2ab448a918";
+const _k2 = "8c6976e5b5410415bde908bd4dee15dfb167a9c873fc4bb8a81f6f2ab448a918";
 
 async function tryLogin(){
-  const id = document.getElementById("loginId").value.trim();
-  const pw = document.getElementById("pwInput").value.trim();
-  if (id.toLowerCase() === "admin" && (pw === "admin" || pw === "管理者パスワード")) {
+  const i = document.getElementById("loginId").value.trim();
+  const p = document.getElementById("pwInput").value.trim();
+  const h1 = await getHash(i.toLowerCase());
+  const h2 = await getHash(p);
+
+  if (h1 === _k1 && h2 === _k2) {
     window.loginRole = "admin";
-  } else if (studentsList.includes(id)) {
-    window.loginRole = "student"; window.loginStudentId = id;
+  } else if (studentsList.includes(i)) {
+    window.loginRole = "student"; window.loginStudentId = i;
   } else { return alert("ログイン失敗"); }
   
   document.getElementById("loginBox").style.display="none";
   document.getElementById("app").style.display="block";
-  
   const isAdmin = (window.loginRole === "admin");
   const isStudent = (window.loginRole === "student");
-
-  document.getElementById("companyManageButton").style.display = (isAdmin || isStudent) ? "inline-block" : "none";
+  document.getElementById("companyManageButton").style.display = "inline-block";
   document.getElementById("backupRestoreContainer").style.display = isAdmin ? "block" : "none";
   document.getElementById("searchBox").style.display = isAdmin ? "inline-block" : "none";
   document.getElementById("searchButton").style.display = isAdmin ? "inline-block" : "none";
   document.getElementById("classFilterContainer").style.display = isAdmin ? "block" : "none";
-  
   document.getElementById("student").readOnly = isStudent;
-  document.getElementById("welcomeMessage").textContent = isAdmin ? "管理者モード" : `こんにちは ${studentsMap.get(id)}さん`;
-  
+  document.getElementById("welcomeMessage").textContent = isAdmin ? "管理者モード" : `こんにちは ${studentsMap.get(i)}さん`;
   loadEmployment(); loadCompanies();
 }
 
-function selectRow(id){
-  selectedId=id; const e=employment.find(x=>x.id===id);
-  document.getElementById("student").value=e.student;
-  document.getElementById("companyName").value=e.companyName;
-  document.getElementById("statusSelect").value=e.status;
-  document.getElementById("date").value=e.date||"";
-  document.getElementById("editSection").style.display = 'block';
-  document.getElementById("editSectionHr").style.display = 'block';
-}
+async function loadStatusColors() { try { const r = await fetch('status_colors.json'); if (r.ok) statusColors = await r.json(); } catch (e) {} }
+async function loadStudents() { try { const r = await fetch('students.json'); if (!r.ok) return; const d = await r.json(); for (const k in d) { classKeys.push(k); d[k].forEach(s => { studentsList.push(s.id); studentsMap.set(s.id, s.name); studentClassMap.set(s.id, k); }); } } catch (e) {} }
+async function loadEmployment() { if(!db) return; try { const s = await db.collection("employment").get(); const d = s.docs.map(doc => ({ id: doc.id, ...doc.data() })); employment = (window.loginRole === "student") ? d.filter(e => e.student === window.loginStudentId) : d; employment.sort((a, b) => a.student.localeCompare(b.student)); if (window.loginRole === "admin") { renderClassFilters(); updateTodaySchedule(); } renderTable(employment); } catch(e) { console.error(e); } }
+function updateTodaySchedule() { const c = document.getElementById("todaySchedule"); const l = document.getElementById("todayList"); if (window.loginRole !== "admin") { c.style.display = "none"; return; } const t = new Date().toLocaleDateString('sv-SE'); const todays = employment.filter(e => e.date === t); if (todays.length > 0) { c.style.display = "block"; l.innerHTML = todays.map(e => `<div>・${studentsMap.get(e.student)||"不明"}　${e.status}（${e.companyName}）</div>`).join(""); } else { c.style.display = "none"; } }
+function renderTable(list){ const tb=document.getElementById("employment-table"); tb.innerHTML=""; const now = new Date(); list.forEach(e=>{ const tr=document.createElement("tr"); tr.onclick=()=>selectRow(e.id); let mark = ""; if (e.updatedAt && e.updatedAt.toDate) { if ((now - e.updatedAt.toDate()) / 3600000 <= 120) mark = "★"; } tr.innerHTML=`<td style="color:gold;font-weight:bold;">${mark}</td><td>${e.student}</td><td>${studentsMap.get(e.student)||"?"}</td><td>${e.companyName}</td><td>${e.status}</td><td>${e.date||""}</td>`; if (statusColors[e.status]) { tr.style.backgroundColor = statusColors[e.status].background; tr.style.color = statusColors[e.status].text; } tb.appendChild(tr); }); }
+function selectRow(id){ selectedId=id; const e=employment.find(x=>x.id===id); document.getElementById("student").value=e.student; document.getElementById("companyName").value=e.companyName; document.getElementById("statusSelect").value=e.status; document.getElementById("date").value=e.date||""; document.getElementById("note").value=e.note||""; renderHistory(e.history); document.getElementById("editSection").style.display = 'block'; document.getElementById("editSectionHr").style.display = 'block'; }
 
-async function addEmployment(){
-  const s = document.getElementById("student").value;
-  const c = document.getElementById("companyName").value;
-  if(!s || !c) return alert("入力してください");
-  await db.collection("employment").add({
-    student:s, companyName:c, status:document.getElementById("statusSelect").value,
-    date:document.getElementById("date").value, updatedAt: firebase.firestore.FieldValue.serverTimestamp()
-  });
-  loadEmployment(); clearAll();
+function parseHistory(h) { try { const r = JSON.parse(h||'[]'); return Array.isArray(r)?r:[]; } catch(e){ return []; } }
+function renderHistory(hStr) {
+  const c = document.getElementById("historyContainer"); const l = document.getElementById("historyList");
+  if (window.loginRole !== "admin") { c.style.display = "none"; return; }
+  c.style.display = "block"; l.innerHTML = ""; l.style.display = "none";
+  const arr = parseHistory(hStr); arr.sort((a,b)=>new Date(b.date)-new Date(a.date));
+  if(arr.length===0) { l.innerHTML="<p>履歴なし</p>"; return; }
+  const ul=document.createElement("ul");
+  arr.forEach(i=>{ const li=document.createElement("li"); li.textContent=`[${i.date}] ${i.status}`; ul.appendChild(li); });
+  l.appendChild(ul);
 }
+document.getElementById("historyToggle").onclick = () => { const l = document.getElementById("historyList"); l.style.display = (l.style.display === 'none') ? 'block' : 'none'; };
 
-async function updateEmployment(){
-  if(!selectedId) return;
-  await db.collection("employment").doc(selectedId).update({
-    student: document.getElementById("student").value, companyName: document.getElementById("companyName").value,
-    status: document.getElementById("statusSelect").value, date: document.getElementById("date").value,
-    updatedAt: firebase.firestore.FieldValue.serverTimestamp()
-  });
-  loadEmployment(); clearAll();
+async function addEmployment(){ 
+  const s = document.getElementById("student").value; const c = document.getElementById("companyName").value; 
+  if(!s || !c) return alert("入力してください"); 
+  const st = document.getElementById("statusSelect").value; const d = document.getElementById("date").value;
+  const n = document.getElementById("note").value;
+  const h = JSON.stringify([{ date: d || new Date().toISOString().split('T')[0], status: st }]);
+  await db.collection("employment").add({ student:s, companyName:c, status:st, date:d, note:n, history:h, updatedAt: firebase.firestore.FieldValue.serverTimestamp() }); 
+  loadEmployment(); clearAll(); 
 }
-
-async function deleteEmployment(){
-  if(!selectedId || !confirm("削除しますか？")) return;
-  await db.collection("employment").doc(selectedId).delete();
-  loadEmployment(); clearAll();
-}
-
-function showAddForm() {
-  clearAll();
-  document.getElementById("editSection").style.display = 'block';
-  document.getElementById("editSectionHr").style.display = 'block';
-}
-
-function clearAll(){
-  selectedId = null;
-  document.getElementById("searchBox").value = "";
-  // 学生なら自分の学籍番号を残す、管理者なら空
-  document.getElementById("student").value = (window.loginRole === "student" ? window.loginStudentId : "");
-  document.getElementById("companyName").value = "";
-  document.getElementById("statusSelect").selectedIndex = 0;
-  document.getElementById("date").value = "";
+async function updateEmployment(){ 
+  if(!selectedId) return; 
+  // 画面の入力値（新しいステータス）を取得
+  const st = document.getElementById("statusSelect").value; 
+  const d = document.getElementById("date").value;
+  const n = document.getElementById("note").value;
   
-  if (window.loginRole === "admin") {
-      renderTable(employment);
-  } else {
-      renderTable(employment.filter(e => e.student === window.loginStudentId));
-  }
+  const e = employment.find(x=>x.id===selectedId); 
+  let arr = parseHistory(e.history);
+  
+  // 新しいステータスを履歴に追加
+  arr.push({ date: d || new Date().toISOString().split('T')[0], status: st });
+  
+  await db.collection("employment").doc(selectedId).update({ student: document.getElementById("student").value, companyName: document.getElementById("companyName").value, status: st, date: d, note:n, history: JSON.stringify(arr), updatedAt: firebase.firestore.FieldValue.serverTimestamp() }); 
+  loadEmployment(); clearAll(); 
 }
-
-function toggleBackupRestoreInner() {
-    const s = document.getElementById("backupRestoreSection");
-    s.style.display = (s.style.display === 'none') ? 'block' : 'none';
-}
-
-async function backupData() {
-    const s = await db.collection("employment").get();
-    const data = s.docs.map(doc => {
-        const item = { id: doc.id, ...doc.data() };
-        if (item.updatedAt && item.updatedAt.toDate) item.updatedAt = item.updatedAt.toDate().toISOString();
-        return item;
-    });
-    const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' });
-    const a = document.createElement('a'); a.href = URL.createObjectURL(blob);
-    a.download = `backup_${new Date().toLocaleDateString('sv-SE')}.json`; a.click();
-}
-
-async function restoreData() {
-    const file = document.getElementById('restoreFile').files[0];
-    if (!file || !confirm("リストアしますか？")) return;
-    try {
-        const data = JSON.parse(await file.text());
-        const s = await db.collection("employment").get();
-        for (const d of s.docs) await d.ref.delete();
-        for (const record of data) {
-            const { id, ...dataToPost } = record;
-            if (dataToPost.updatedAt) dataToPost.updatedAt = firebase.firestore.Timestamp.fromDate(new Date(dataToPost.updatedAt));
-            await db.collection("employment").add(dataToPost);
-        }
-        alert("リストア完了"); loadEmployment();
-    } catch(e) { alert("リストア失敗"); }
-}
-
-async function manualDeleteAll() { if (confirm("全消去しますか？")) { const s = await db.collection("employment").get(); for (const d of s.docs) await d.ref.delete(); loadEmployment(); } }
-
-function renderClassFilters() {
-  const con = document.getElementById("classFilterContainer"); con.innerHTML = "";
-  ['ALL', ...classKeys].forEach(k => {
-    const b = document.createElement("button"); b.textContent = k; b.className = "big-button";
-    if (currentFilterClass === k) b.classList.add('active-filter');
-    b.onclick = () => { currentFilterClass = k; renderClassFilters(); renderTable(k === 'ALL' ? employment : employment.filter(e => studentClassMap.get(e.student) === k)); };
-    con.appendChild(b);
-  });
-}
-
+async function deleteEmployment(){ if(!selectedId || !confirm("削除しますか？")) return; await db.collection("employment").doc(selectedId).delete(); loadEmployment(); clearAll(); }
+function showAddForm() { clearAll(); document.getElementById("editSection").style.display = 'block'; document.getElementById("editSectionHr").style.display = 'block'; document.getElementById("historyContainer").style.display = 'none'; }
+function clearAll(){ selectedId = null; document.getElementById("searchBox").value = ""; document.getElementById("student").value = (window.loginRole === "student" ? window.loginStudentId : ""); document.getElementById("companyName").value = ""; document.getElementById("statusSelect").selectedIndex = 0; document.getElementById("date").value = ""; document.getElementById("note").value = ""; if (window.loginRole === "admin") { renderTable(employment); } else { renderTable(employment.filter(e => e.student === window.loginStudentId)); } }
+function toggleBackupRestoreInner() { const s = document.getElementById("backupRestoreSection"); s.style.display = (s.style.display === 'none') ? 'block' : 'none'; }
+async function backupData() { const s = await db.collection("employment").get(); const d = s.docs.map(doc => { const item = { id: doc.id, ...doc.data() }; if (item.updatedAt && item.updatedAt.toDate) item.updatedAt = item.updatedAt.toDate().toISOString(); return item; }); const b = new Blob([JSON.stringify(d, null, 2)], { type: 'application/json' }); const a = document.createElement('a'); a.href = URL.createObjectURL(b); a.download = `backup_${new Date().toLocaleDateString('sv-SE')}.json`; a.click(); }
+async function restoreData() { const f = document.getElementById('restoreFile').files[0]; if (!f || !confirm("リストアしますか？")) return; try { const d = JSON.parse(await f.text()); const s = await db.collection("employment").get(); for (const doc of s.docs) await doc.ref.delete(); for (const r of d) { const { id, ...p } = r; if (p.updatedAt) p.updatedAt = firebase.firestore.Timestamp.fromDate(new Date(p.updatedAt)); await db.collection("employment").add(p); } alert("完了"); loadEmployment(); } catch(e) { alert("失敗"); } }
+async function manualDeleteAll() { if (window.loginRole !== "admin" || !confirm("【最終確認】全データを削除しますか？この操作は取り消せません。")) return; const s = await db.collection("employment").get(); for (const doc of s.docs) await doc.ref.delete(); alert("全データを削除しました。"); loadEmployment(); }
+function renderClassFilters() { const c = document.getElementById("classFilterContainer"); c.innerHTML = ""; ['ALL', ...classKeys].forEach(k => { const b = document.createElement("button"); b.textContent = k; b.className = "big-button"; if (currentFilterClass === k) b.classList.add('active-filter'); b.onclick = () => { currentFilterClass = k; renderClassFilters(); renderTable(k === 'ALL' ? employment : employment.filter(e => studentClassMap.get(e.student) === k)); }; c.appendChild(b); }); }
 function openCompanyModal(){ document.getElementById("companyModal").style.display="block"; }
 function closeCompanyModal(){ document.getElementById("companyModal").style.display="none"; }
-async function loadCompanies(){
-  const s = await db.collection("companies").get();
-  companies = s.docs.map(d => ({ id: d.id, ...d.data() }));
-  const tb = document.getElementById("companyList"); tb.innerHTML = "";
-  companies.forEach(c => {
-    const tr = document.createElement("tr"); tr.innerHTML = `<td>${c.companyName}</td>`;
-    tr.onclick = () => { document.getElementById("companyName").value = c.companyName; closeCompanyModal(); };
-    tb.appendChild(tr);
-  });
-}
+async function loadCompanies(){ if(!db) return; const s = await db.collection("companies").get(); companies = s.docs.map(d => ({ id: d.id, ...d.data() })); const tb = document.getElementById("companyList"); tb.innerHTML = ""; companies.forEach(c => { const tr = document.createElement("tr"); tr.innerHTML = `<td>${c.companyName}</td>`; tr.onclick = () => { document.getElementById("companyName").value = c.companyName; closeCompanyModal(); }; tb.appendChild(tr); }); }
 function searchEmployment(){ const k = document.getElementById("searchBox").value.trim(); renderTable(!k ? employment : employment.filter(e => e.student.includes(k))); }
 function openCompanyManager() { window.open('company.html', '_blank'); }
 </script>

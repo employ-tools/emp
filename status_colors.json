@@ -15,6 +15,10 @@
     "background": "#555555",
     "text": "#ffffff"
   },
+  "辞退": {
+    "background": "#555555",
+    "text": "#ffffff"
+  },
   "選考中": {
     "background": "#ffffff",
     "text": "#000000"
